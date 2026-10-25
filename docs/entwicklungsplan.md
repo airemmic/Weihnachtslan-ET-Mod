@@ -8,6 +8,7 @@ Beauftragte Erweiterungen des Weihnachts-LAN-Mods, Stand 25.10.2026. Reihenfolge
 - Jede Erweiterung einzeln per Cvar abschaltbar; Standardwert ohne Cvar entspricht dem bisherigen Verhalten.
 - Assets (Modelle, Texturen, Sounds) entstehen extern über Meshy und Blender und werden als Dateien in das Mod-PK3 aufgenommen. Code verweist nur auf Pfade; fehlende Assets dürfen nicht zum Absturz führen, sondern fallen auf Originaldateien zurück.
 - Nachweis je Erweiterung: Host-Build, native Assertions, passender Smoke. Grafische Abnahme erst mit vorhandenen Assets und Original-PK3s.
+- Nach jedem abgeschlossenen Punkt zusätzlich den Projektartikel in der Wissensdatenbank nachziehen (Space „WD - Programmieren“, Artikel 4519): Nachweise, Todo-Liste, Verlauf. Nur belegte Ergebnisse eintragen.
 
 ## 1. Rundenmodifikatoren
 
