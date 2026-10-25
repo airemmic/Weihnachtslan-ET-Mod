@@ -15,7 +15,7 @@ Beauftragte Erweiterungen des Weihnachts-LAN-Mods, Stand 25.10.2026. Reihenfolge
 Stand 25.10.2026. Bei jeder Änderung an Status oder Branch-Lage diesen Abschnitt nachziehen.
 
 - **Ein Mod, ein Repository:** Alle Erweiterungen sind Teile desselben Mods `etlab` (ein `fs_game`, gemeinsame Module, ein `mod/etlab.patch`). Ein Server lädt nur einen Mod; getrennte Mods oder Repositories könnten nicht gemeinsam laufen. Jede Erweiterung bleibt per Cvar einzeln schaltbar.
-- **Branch-Lage:** Aktueller Stand auf `ccr-ad00a20d-4uwhgx`; enthält `ccr-78a33ed0-k5azh0` vollständig. Beide sind noch nicht in `main`. Nach Übernahme nach `main` ist `ccr-78a33ed0-k5azh0` überholt.
+- **Branch-Lage:** Punkte 1 und 2 sind in `main` (PR #1, Merge `3aac44a`). `ccr-78a33ed0-k5azh0` ist darin vollständig enthalten und überholt. Neue Arbeit startet von `main`.
 - **Arbeitsweise:** Erweiterungen nacheinander entwickeln und zügig nach `main` übernehmen. Parallele Branches kollidieren in der einen Patch-Datei; Konflikte im Source-Checkout lösen und per `save` neu erzeugen, nie im Patch von Hand mischen.
 - **LAN-Betrieb:** Ohne Cvars verhält sich der Mod wie vor den Erweiterungen. Für die LAN mindestens `g_etlabModifierPool`, `g_etlabModifierMode` und `g_etlabAwards 1` am Server setzen; siehe `installation.md`.
 
