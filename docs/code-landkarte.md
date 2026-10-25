@@ -1,6 +1,6 @@
 # Code-Orientierung
 
-Die folgenden Pfade beziehen sich auf den automatisch vorbereiteten Release-Source. Sein Pfad steht in `.cache/state.json` unter `sourcePath`. Eure versionierte Änderung liegt in `mod/etlab.patch`.
+Die folgenden Pfade beziehen sich auf den automatisch vorbereiteten Release-Source. Sein Pfad steht unter Windows in `.cache/state.json`, unter Linux in `.cache/linux/state.json`, jeweils unter `sourcePath`. Die versionierte Änderung liegt in `mod/etlab.patch`.
 
 | Thema | Dateien und Einstieg |
 |---|---|
@@ -20,4 +20,4 @@ Alle bisherigen Spielregeln passen in den Gamecode-Mod. Für weitere Klassen mü
 
 Cvars ändern nur vorhandene Optionen. Lua eignet sich für Serverregeln und Tests, soweit die API diese Funktionen zugänglich macht. Veränderungen von Waffenverhalten, Prediction oder Client-Auswahl benötigen häufig den hier verwendeten nativen Gamecode-Mod.
 
-Engine-Dateien unter anderem in `src/client`, `src/server`, `src/renderer*` sowie externe `libs/` gehören nicht zu unseren Mod-Änderungen. CMake wird lediglich um das native Testziel ergänzt.
+Engine-Dateien unter anderem in `src/client`, `src/server`, `src/renderer*` sowie externe `libs/` gehören nicht zu den Mod-Änderungen. CMake wird lediglich um das native Testziel ergänzt.

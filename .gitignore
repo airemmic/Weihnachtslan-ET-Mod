@@ -5,3 +5,4 @@
 /logs/
 /archive/
 /dist/
+__pycache__/

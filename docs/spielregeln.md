@@ -1,15 +1,6 @@
-# ETLab: Akimbo, Entschärfen und Minensuche
+# Gameplay-Vertrag für LLM-Agenten
 
-## Spielen
-
-In diesem Mod-Projektordner **`ETLab starten.cmd` doppelklicken**. Der Starter öffnet den offiziellen Client, lädt `etlab` und startet eine lokale Partie auf `oasis`. Mit **L** Team, Klasse und Loadout wählen. Die Partie ist nur über Loopback erreichbar; es werden keine Bots gestartet.
-
-- **2:** Pistolen; **3:** Primärwaffe; **4:** Handgranate.
-- **5:** Zange, bei mehreren Werkzeugen gegebenenfalls mehrfach drücken.
-- **B gedrückt halten:** Fernglas. Eine gegnerische Mine etwa 2,5 Sekunden im Blickfeld halten, bis sie markiert wird. Sichtlinie und normaler Entdeckungsfortschritt gelten weiterhin.
-- **F6:** Übungsobjekte neu platzieren. Die Konsole kennt dafür auch `etlab_targets`.
-
-Das separate Spielprofil liegt unter `profiles/play/etlab`. Die vorhandene Spielinstallation bleibt unberührt. Bestehende individuelle Tastenbelegungen gelten weiterhin; der Starter belegt F6 für das Übungsfeld.
+Zweck: Sollverhalten bei Änderungen und Tests erhalten. Regeln gelten für beide Teams, sofern nicht ausdrücklich eingeschränkt. Diese Datei beschreibt Gameplay; Build- und Plattformregeln stehen in `AGENTS.md` und `llm-workflow.md`.
 
 ## Spielregeln
 
@@ -23,36 +14,25 @@ Das separate Spielprofil liegt unter `profiles/play/etlab`. Die vorhandene Spiel
 - **Entfernung und Deckung:** Es gelten die vorhandenen Radius- und Deckungsprüfungen des Spiels, einschließlich dessen Nahbereichsregeln. Eine Explosion muss tatsächlich Schaden bis zur Mine übertragen. Minen explodieren mit ihrer normalen Wirkung; das ist kein gefahrloses Entfernen.
 - **Skills:** Die vorhandenen XP-Vergaben und Skill-Boni bleiben wirksam; für Nicht-Engineers gilt zusätzlich der halbierte Zangentakt. Entschärfen benötigt keine Bauenergie. Der Engineer verwendet für Bauen/Reparieren weiterhin seine normalen Charge-Regeln.
 
-## Automatisches Übungsfeld
+## Übungsfeld-Invarianten
 
-Nur der Direktstarter aktiviert `g_etlabPractice 1`. Beim regulären Spawn des lokalen Spielers auf Oasis werden drei gegnerische, scharfe Minen und ein gegnerisches, scharfes Dynamitpaket erzeugt. Zwei Minen beginnen verborgen, eine ist bereits markiert, damit Schüsse sofort ausprobiert werden können. Der Blick wird auf die erste verborgene Mine gerichtet. **B** halten, um sie zu suchen.
+- `g_etlabPractice 1` ist opt-in. Zusätzlich müssen lokaler Host, Listenserver und Map `oasis` zutreffen. Auf Dedicated Servern keine Übungsobjekte erzeugen.
+- Bei regulärem Spawn: drei gegnerische scharfe Minen (zwei verborgen, eine markiert) und ein gegnerisches scharfes Dynamitpaket. Blick auf erste verborgene Mine setzen. Revive darf das Feld nicht zurücksetzen.
+- Dynamit im Übungsfeld: fünf Minuten Fuse, anschließend echte Explosion; keinem Missionsziel zugeordnet.
+- `etlab_targets` / F6 entfernt nur eigene Fixtures und Kartenmarker und erzeugt sie am aktuellen Standort neu. Teams nach Teamwechsel neu bestimmen.
+- Bodenpositionen müssen trocken, sichtbar und ausreichend getrennt sein. Bei unzureichendem Platz Meldung statt defekter Fixtures erzeugen.
+- `g_etlabPractice 0` stoppt neues Erzeugen; Mapwechsel entfernt bestehende Entitäten.
 
-Dynamit hat im Übungsfeld **fünf Minuten Zündzeit**. Das gibt Zeit zum Ausprobieren; es explodiert danach tatsächlich. F6 entfernt die eigenen Übungsobjekte samt Kartenmarkierungen und legt sie um den aktuellen Standort neu an. Bei Teamwechsel passen sich ihre Teams an. Falls ein enger Innenraum nicht genug geeigneten Boden bietet, fordert das Spiel zum Wechsel auf offenen Boden und F6 auf. Revive setzt das Übungsfeld nicht zurück.
+## Beobachtbare Interaktionen
 
-Der Mod prüft dafür lokalen Host, Listenserver, Oasis und die explizite Cvar. Dedicated Server und normale andere Maps erhalten keine Übungsobjekte. Mit `set g_etlabPractice 0` wird das Erzeugen ausgeschaltet; eine neue Map entfernt bestehende Objekte. Das Übungsdynamit ist keinem Missionsziel zugeordnet.
+| Aktion | Kontrollpfad |
+|---|---|
+| Team/Klasse/Loadout | Limbo, Standardtaste L |
+| Akimbo / Primärwaffe / Handgranate | Weapon banks 2 / 3 / 4 |
+| Zange | Weapon bank 5; bei mehreren Werkzeugen weiterwechseln |
+| Fernglas | Standardtaste B halten; normaler Fortschritt, etwa 2,5 Sekunden |
+| Übungsobjekte zurücksetzen | F6 / `etlab_targets` |
 
-## Code und Prüfungen
+Native Klassen-/Loadout-Prüfungen und echte Interaktionen getrennt testen. Für Entschärfungszeiten Soldier/Engineer bei identischem Skill 0 und 4 vergleichen; Waffenwechsel und Annäherung nicht mitzählen. Dynamit kann nach Defuse verzögert entfernt werden, daher Frame-Toleranz zulassen. Bestehende XP-/Charge-Regeln nicht unbeabsichtigt ändern.
 
-Es ist ein nativer Gamecode-Mod. Engine und externe Libraries wurden für diese Spielregeln nicht verändert.
-
-- `src/game/bg_classes.c`, `bg_public.h`, `g_client.c`, `src/cgame/cg_limbopanel.c`: gemeinsame Akimbo-Auswahl, Spawn und Werkzeuge.
-- `src/game/g_weapon.c`: `G_CanUsePliersOn`, tatsächlicher Zangenpfad, Minen-Scharfmachen, `G_RevealLandmine`, lokales Übungsfeld.
-- `src/game/bg_pmove.c`: gemeinsamer Zangentakt für Client-Prediction und Server; Nicht-Engineers benötigen doppelt so lange.
-- `src/game/g_main.c`: zulässige Interaktionshinweise.
-- `src/game/g_teammapdata.c`, `g_missile.c`: Fernglassuche, Fortschritt und Sichtbarkeit.
-- `src/game/g_combat.c`: zulässige Schadensarten für verborgene/entdeckte Minen; bestehende Radiusprüfung bleibt erhalten.
-- `tests/native/etlab_loadouts.c` im Mod-Projekt: Native Tests mit echten Gameplay-Funktionen. Engine-Geometrie, PVS und Benachrichtigungen werden im Harness kontrolliert. Getestet werden unter anderem alle Klassen/Teams, Akimbo, Zangenaktionen, Fernglasfortschritt, Trefferbereich und Minenschaden einschließlich Deckung/Entfernung.
-- `tests/mines-runtime.lua` im Workspace: echter Client-Test. Fernglas, Pistolen und Zange werden über Spielbefehle betätigt. Die tatsächlichen Zangenereignisse und vollständigen Entschärfungen werden für Soldier und Engineer bei Skill 0 und 4 zeitlich verglichen, jeweils für Dynamit und Landminen. Tatsächlich geworfene Granaten werden für reproduzierbare Positionierung testseitig neben die Mine versetzt; Zündzeit, Explosion, Radius-/Deckungsprüfung und Minenreaktion führt der echte Gamecode aus. Das Testscript wird ausschließlich in einem frischen Smoke-Profil geladen.
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Build-Mod.ps1
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Test-ETLabServer.ps1
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Start-ETLabGame.ps1 -SmokeTest
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Start-ETLabGame.ps1 -MineSmoke
-```
-
-Der Buildstarter führt CTest vor dem Staging aus. Smoke-Profile sind frisch und unabhängig vom Spielprofil. Der Minentest verwendet nur dort `devmap` und Test-Cheats; der normale Direktstarter startet ohne Cheats. Logs und Screenshots liegen unter `profiles/client-smoke-*/etlab`. Eine vollständige Map-, Multiplayer-, Balance- und Revive-Abnahme bleibt eine getrennte Aufgabe.
-
-## Verifizierter Stand
-
-Siehe [Prüfstand](pruefstand.md) für die Abnahme dieses eigenständigen Mod-Projekts mit der offiziellen Release-Engine.
+Technische Einstiege: `code-landkarte.md`. Testvertrag: `pruefstand.md`. Nur auf der eigenen Host-Plattform testen; Cross-platform-Abnahme gehört zum Release.

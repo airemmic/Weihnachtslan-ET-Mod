@@ -1,26 +1,36 @@
 ---
 name: etlab-mod
-description: Entwickle den eigenstaendigen ETLab-Gamecode-Mod gegen den neuesten offiziellen ET-Legacy-Stable-Release und pruefe Build, Minenregeln und Entschaerfung.
+description: Entwickle den Weihnachtslan-ET-Gamecode-Mod, sichere Aenderungen als Patch und pruefe ausschliesslich auf der jeweiligen Host-Plattform; Cross-platform-Abnahme beim beauftragten Release.
 ---
 
-# ETLab-Mod bearbeiten
+# Weihnachtslan-ET-Mod bearbeiten
 
-Projektwurzel ist drei Ebenen oberhalb dieses Skill-Ordners. Lies `README.md` fuer den Workflow, `docs/spielregeln.md` vor Gameplay-Aenderungen und `docs/code-landkarte.md` fuer Symbole.
+Projektwurzel ist drei Ebenen oberhalb dieses Skill-Ordners. `AGENTS.md` und `README.md` lesen. Dokumentation ist fuer LLM-Agenten; nur die README-Einleitung richtet sich an Menschen.
 
-Der versionierte Mod besteht aus `mod/etlab.patch`, eigenen Tests und Werkzeugen. `.cache/state.json` nennt den aktuellen vorbereiteten Source-Ordner. Dort Gamecode bearbeiten, anschliessend `scripts/Save-ModChanges.ps1` ausfuehren. Native Tests direkt in `tests/native/` pflegen. Sonst gingen Aenderungen beim Teilen des Mod-Repositorys verloren.
+## Plattformentscheidung zuerst
 
-Mit `scripts/Build-Mod.ps1` bauen; nur Game-Module und Test-Executable werden kompiliert. Der normale Starter prueft den neuesten Stable-Release. Kein Wechsel auf master/Nightly. Konflikte beim Update nachvollziehen und Patch auf neuer Release-Basis anpassen, niemals ungesicherte Aenderungen automatisch entfernen. Fuer Wiederholungspruefungen bewusst `-Locked` nutzen.
+Windows-Arbeitsrechner: nur Windows bauen/testen. Linux-Arbeitsrechner: nur Linux bauen/testen. Keine zusaetzliche Gegenplattform via WSL, Container, VM oder SSH starten. Cross-platform-Abnahme nur im ausdruecklich beauftragten Release; vorhandene Infrastruktur allein autorisiert sie nicht.
+
+## Workflow
+
+- Windows: `scripts/Build-Mod.ps1`; Source-State `.cache/state.json`; danach `scripts/Save-ModChanges.ps1`.
+- Linux: `python3 scripts/etlab-linux.py build`; Source-State `.cache/linux/state.json`; danach `python3 scripts/etlab-linux.py save`.
+- Source-Pfad aus State lesen. Gamecode dort bearbeiten; kanonische Aenderungen nach `mod/etlab.patch` sichern. Neue Source-Dateien mit `git add -N` erfassen. Tests direkt in `tests/native/` pflegen.
+- Nur Mod-Module bauen. Engine aus offiziellem Stable-Archiv. Normale Builds pruefen Latest; `-Locked`/`--locked` bewusst fuer reproduzierbare Pruefungen verwenden. Konflikte/ungesicherte Edits nicht automatisch entfernen.
+- Details: `docs/llm-workflow.md`; Linux-CLI: `docs/linux.md`; Installation/Release: `docs/installation.md`.
 
 ## Gameplay-Fallstricke
 
-- Akimbo-Regeln fuer Spawn und Limbo gemeinsam pflegen; beide Magazine und XP-Freischaltung erhalten.
-- Zangenrechte: `G_CanUsePliersOn` und `Weapon_Engineer`. Nicht-Engineers nur scharfes Dynamit und Minen. `PM_Weapon` setzt den gemeinsamen Client-/Server-Takt auf 100 statt 50 ms; gleiche Skill-Boni erhalten.
-- Minensuche braucht Fernglas, `G_CheckSpottedLandMines`, Snapshot-Sichtbarkeit und Hinweise. `G_RevealLandmine` erzeugt den beschiessbaren Trefferbereich.
-- Verborgene Minen akzeptieren ausschliesslich beide Handgranaten-Schadensarten. `takedamage` allein reicht nicht; Radius/Deckung gelten weiterhin.
-- Uebungsobjekte nur fuer lokalen Listenserver, Oasis und `g_etlabPractice`. Native Vector-Makros werten Argumente mehrfach aus; keine Inkremente in Makroargumenten.
+Vor Aenderungen `docs/spielregeln.md` und passende Symbole aus `docs/code-landkarte.md` lesen.
 
-## Nachweis
+- Spawn, Limbo und Servervalidierung muessen Akimbo gemeinsam erlauben; beide Magazine, XP-Freischaltung und Klassenwechsel pruefen.
+- Zangenbesitz und Ausfuehrungsberechtigung getrennt pruefen: `G_CanUsePliersOn`, `Weapon_Engineer`, Interaktionshinweise. `PM_Weapon` ist gemeinsame Prediction/Server-Logik; 100 statt 50 ms nur fuer berechtigte Nicht-Engineers.
+- Minensuche umfasst Fernglas, `G_CheckSpottedLandMines`, Snapshot-Sichtbarkeit und Hinweise. `G_RevealLandmine` erzeugt den beschiessbaren Trefferbereich. Klassen-Ausnahmen aus Gameplay-Vertrag erhalten.
+- Verborgene Minen akzeptieren nur beide Handgranaten-Schadensarten; `takedamage` allein reicht nicht. Radius/Deckung und scharfer Zustand bleiben Bedingungen.
+- Uebungsfeld: lokaler Host + Listenserver + Oasis + Opt-in. Vector-Makros werten Argumente mehrfach aus; keine Inkremente in Makroargumenten.
 
-Build fuehrt CTest vor Staging aus. Danach `Test-ETLabServer.ps1` fuer offiziellen Server und `Start-ETLabGame.ps1 -MineSmoke` fuer echten Client verwenden. Der Client-Test dauert etwa zwei Minuten, nutzt ein frisches Profil und vergleicht Soldier/Engineer bei Skill 0/4. Granaten werden fuer reproduzierbare Positionierung testseitig versetzt, ihre Explosion ist echtes Gameplay. Screenshot ansehen; Logs liegen unter `logs/` und `profiles/`.
+## Nachweise
 
-Native Assertions, Runtime-Nachweise und manuelle Multiplayer-Abnahme getrennt berichten. Nur Windows x64 ist automatisiert; DLLs nicht als Linux-Server-Paket ausgeben.
+Build/CTest vor Staging; danach nur aufgabenrelevante Tests der Host-Plattform. `docs/pruefstand.md` beschreibt Aussagekraft und Testgrenzen. Reine Doku braucht keinen Spielstart. Granaten werden im Client-Test positioniert, die Explosion bleibt echtes Gameplay. Native Assertions ersetzen keine Client-/Multiplayer-Abnahme.
+
+Gemischte LAN-Pakete: identisches PK3 mit beiden Clientmodulen; Export prueft Commit/Patch. ZIP-Strukturpruefung von echter Cross-platform-Verbindung unterscheiden. Letztere erst beim beauftragten Release.

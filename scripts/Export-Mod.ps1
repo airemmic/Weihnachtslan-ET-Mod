@@ -16,8 +16,19 @@ Compress-Archive -Path (Join-Path $stage '*') -DestinationPath ($stage + '.zip')
 # Explicit allow-list excludes all assets, profiles, binaries, caches and Git metadata.
 $projectStage = Join-Path $etlRoot ('dist/' + $id + '-project')
 New-Item -ItemType Directory -Path $projectStage -Force | Out-Null
-foreach ($name in @('mod','tests','scripts','docs','.agents','AGENTS.md','README.md','LICENSE','release.lock.json','.gitignore','.gitattributes','ETLab starten.cmd','Mod bauen.cmd')) {
-    Copy-Item -LiteralPath (Join-Path $etlRoot $name) -Destination $projectStage -Recurse
+foreach ($name in @('mod','tests','scripts','docs','.agents','AGENTS.md','README.md','LICENSE','release.lock.json','release-linux.lock.json','.gitignore','.gitattributes','ETLab starten.cmd','Mod bauen.cmd')) {
+    $sourceItem = Get-Item -LiteralPath (Join-Path $etlRoot $name)
+    if ($sourceItem.PSIsContainer) {
+        foreach ($file in (Get-ChildItem -LiteralPath $sourceItem.FullName -File -Recurse -Force)) {
+            $relative = $file.FullName.Substring($etlRoot.Length + 1)
+            if ($relative -match '(^|[\\/])__pycache__([\\/]|$)' -or $file.Extension -eq '.pyc') { continue }
+            $target = Join-Path $projectStage $relative
+            New-Item -ItemType Directory -Path (Split-Path $target -Parent) -Force | Out-Null
+            Copy-Item -LiteralPath $file.FullName -Destination $target
+        }
+    } else {
+        Copy-Item -LiteralPath $sourceItem.FullName -Destination $projectStage
+    }
 }
 # tar includes dotfiles, unlike some Compress-Archive versions.
 & tar.exe -a -cf ($projectStage + '.zip') -C $projectStage .
