@@ -20,6 +20,7 @@ Claude Code lädt über `CLAUDE.md` die gemeinsamen Regeln aus `AGENTS.md`, dem 
 | Auf einem Linux-Rechner arbeiten | [Linux-Toolvertrag](docs/linux.md) |
 | Paketexport, Installation, LAN und Release | [Bereitstellungsvertrag](docs/installation.md) |
 | Prüfungen wählen oder Ergebnisse einordnen | [Testvertrag und Nachweise](docs/pruefstand.md) |
+| Geplante Erweiterungen und Leitplanken | [Entwicklungsplan](docs/entwicklungsplan.md) |
 
 ## Plattformregel
 

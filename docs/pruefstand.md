@@ -15,6 +15,8 @@ Host-Plattform zuerst feststellen und `AGENTS.md` befolgen: Windows nur Windows,
 ## Testsemantik
 
 - `tests/native/etlab_loadouts.c`: echte Gameplay-Funktionen; Engine-Geometrie, PVS und Benachrichtigungen kontrolliert. Spawn/Loadouts, Klassen/Teams, XP 0/4, Zangenrechte, Minensuche und Schaden werden geprüft.
+- Rundenmodifikatoren im selben Test: Pool-Parsing, Zufalls-/Vote-/Aus-Modus, Erhalt über Restart, Vote-Validierung, Limbo-/Dynamit-/Minenlimit-Helfer, Ladezeiten, Sudden Death, Sidearms-/Low-Ammo-Loadouts beider Teams, Klassenrotation inklusive Team-Klassenlimits, Vampir, Granatenregen samt Zeitablauf, schnelle Minensuche. Nicht nativ geprüft: Kopfschuss-only im Schadenspfad, Rückstoß, Gravitation, Tempo, HUD-Zeile und Client-Verstärkungstimer; diese brauchen Runtime-Abnahme.
+- Rundenauszeichnungen im selben Test: Tabelle und Session-Schlüssel, Zählfenster nur während der Runde, echte Pfade für Granate auf verborgene Mine (eigene/markierte Mine und Schüsse zählen nicht), Entschärfen gegnerischer Minen und gegnerischen Dynamits durch einen Soldier, MG-42-Reparatur, Fernglas-Entdeckung; Grinch über `G_AddKillSkillPointsForDestruction` (mit/ohne Zerstörungs-XP-Bonus); Reset mit `G_deleteStats`; `G_BuildEndgameStats` mit Cvar aus/an, Gewinner, Gleichstand, Krampus-Tie-Break, Ausschluss von Zuschauern, Server-Kommandos `etlabawards`/`etlabaward`; deutsche Übersetzung jedes Award-Texts im Quell-`de.po`. Nicht nativ geprüft: Revive-, Pack- und Konstruktionszähler im echten Ablauf, Zerstörung im echten Explosionspfad, JSON-Sessionpersistenz über `map_restart`, Client-Endpanel, Chat-Zusammensetzung und Übersetzung zur Laufzeit; diese brauchen Runtime-Abnahme.
 - `tests/smoke.lua`: Map Oasis, Modname, Lua-Init und Frames. Server-Smoke prüft zusätzlich Loopback, RCON und sauberen Exit. Kein Spieler-/Rendering-Nachweis.
 - `tests/mines-runtime.lua`: echter Client; Fernglas, Pistolen und Zange über Spielbefehle. Entschärfung Soldier/Engineer bei Skill 0/4 für Dynamit und Mine. Granaten werden nach echtem Wurf für reproduzierbare Positionierung neben die Mine versetzt; Fuse, Explosion und Schaden sind echte Gameplay-Ausführung.
 - `tests/test_linux_packaging.py`: portable Archivlogik unter dem Host-Python; erzeugt keine Linux-Prozesse und ist kein Linux-Runtime-Test.
@@ -39,6 +41,23 @@ Stand 25.10.2026, Linux x86_64, Ubuntu 24.04, GCC 13.3, CMake 3.28, glibc 2.39, 
 - Offizielle Linux-Engine lädt den Mod; Server-Smoke mit Oasis, Lua, Loopback und RCON erfolgreich.
 - Grafischer Client-Smoke unter WSLg erfolgreich, einschließlich Fernglas, Akimbo, Entschärfung und beiden Handgranaten. Screenshot geprüft.
 - Konkreter Mod-Arbeitsstand und Artefakthashes stehen in den jeweiligen Nachweisdateien. Ergebnisse nicht ungeprüft auf einen anderen Commit/Diff übertragen.
+
+## Vorliegende Linux-Nachweise, Rundenmodifikatoren
+
+Stand 25.10.2026, Cloud-Container Linux x86_64, GCC 13, CMake 3.28, Python 3.13, Release 2.86.2, Commit `fdb40f8706b4e5081bf721cdc5726b2791a6e1f9`:
+
+- Source von GitHub geklont, Patch sauber angewandt, Mod-only Build ohne Warnungen; 1042 native Prüfungen erfolgreich.
+- Offizielles Engine-Archiv war im Container nicht erreichbar (Netzwerkregel); daher kein Server-/Client-Smoke und kein Staging. Die manuelle Schrittfolge entsprach `etlab-linux.py build` ohne Archiv- und Staging-Teil.
+
+## Vorliegende Linux-Nachweise, Rundenauszeichnungen
+
+Stand 25.10.2026, Cloud-Container Linux x86_64, GCC 13, CMake 3.28, Release 2.86.2, Commit `fdb40f8706b4e5081bf721cdc5726b2791a6e1f9`:
+
+- Gesicherter Patch auf frischem Upstream-Worktree sauber angewandt; erzeugter Diff bytegleich mit `mod/etlab.patch`.
+- Vollständiger Mod-only Neubau in leerem Build-Verzeichnis ohne Warnungen; Module und `etlab_v2.86.2.pk3` erzeugt, PK3 enthält die ergänzte `locale/mod/de.po`; 1114 native Prüfungen erfolgreich.
+- Nach Review-Fix Klassenrotation/Klassenlimits: Patch erneut bytegleich auf frischem Upstream, Build ohne Warnungen, 1116 native Prüfungen erfolgreich.
+- `etlab-linux.py save` übernimmt `etmain/locale/mod/de.po` und weist eine Probeänderung in `src/qcommon/` weiterhin ab; `tests/test_linux_packaging.py` erfolgreich. `Save-ModChanges.ps1` nur editiert, auf Linux nicht ausgeführt.
+- Engine-Archiv weiterhin nicht erreichbar; kein Staging, kein Server-/Client-Smoke, keine Sichtprüfung von Endpanel, Chat und Übersetzung.
 
 Diese vorhandenen WSLg-Nachweise ändern die Host-Plattformregel nicht: weitere Linux-Tests auf Windows erst im beauftragten Release.
 

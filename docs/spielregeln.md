@@ -14,6 +14,36 @@ Zweck: Sollverhalten bei Änderungen und Tests erhalten. Regeln gelten für beid
 - **Entfernung und Deckung:** Es gelten die vorhandenen Radius- und Deckungsprüfungen des Spiels, einschließlich dessen Nahbereichsregeln. Eine Explosion muss tatsächlich Schaden bis zur Mine übertragen. Minen explodieren mit ihrer normalen Wirkung; das ist kein gefahrloses Entfernen.
 - **Skills:** Die vorhandenen XP-Vergaben und Skill-Boni bleiben wirksam; für Nicht-Engineers gilt zusätzlich der halbierte Zangentakt. Entschärfen benötigt keine Bauenergie. Der Engineer verwendet für Bauen/Reparieren weiterhin seine normalen Charge-Regeln.
 
+## Rundenmodifikatoren
+
+- **Konfiguration:** `g_etlabModifierPool` nennt die wählbaren Modi (`all` oder Namen, getrennt durch Leerzeichen, Komma oder Semikolon). `g_etlabModifierMode`: 0 aus, 1 Zufall pro Map, 2 nur Vote, 3 Zufall mit Vote-Übersteuerung. `g_etlabModifierMinutes` (Standard 5) begrenzt die Dauer der Gaudi-Modi. Leerer Pool oder Modus 0 bedeutet keine Modifikatoren.
+- **Auswahl:** Zufall zieht beim Mapstart gleichverteilt aus dem Pool. `callvote modifier <name|none>` ist nur in Modus 2 und 3 erlaubt (Referees immer) und akzeptiert nur Pool-Mitglieder; ein erfolgreicher Vote gilt sofort. Der aktive Modus wird in `etlab_modifier` gehalten und überlebt `map_restart` (Warmup-Ende, Stopwatch-Runde 2), solange er im Pool bleibt. Mapwechsel wählt neu.
+- **Ansage:** Center-Print beim Beitritt und bei Aktivierung, Konfigstring `CS_ETLAB_MODIFIER` für das HUD (Titel, Restzeit).
+- **Taktische Modi, ganze Map:** `doublexp` doppelte XP; `fastspawn` Verstärkungszeit halbiert (Server und Client-Timer); `longdyno` Dynamit 45 statt 30 Sekunden; `quickspot` Fernglas-Minensuche doppelt so schnell; `medicshortage` höchstens zwei Medics je Team, Medic-Ladezeit ×1,5; `engineerfest` Minenlimit verdoppelt, Engineer-Ladezeit halbiert; `heavyfree` keine Teamlimits für schwere Waffen; `lowammo` Reservemunition beim Spawn halbiert, Handgranaten und Magazin unverändert; `suddendeath` keine Verstärkung in den letzten zwei Minuten eines Timelimits; `classrotation` wer mit derselben Klasse wie beim letzten Spawn erneut spawnt, erhält die nächste Klasse, die die Team-Klassenlimits (`team_max*`) zulassen, mit deren Standard-Loadout; ist keine andere Klasse frei, bleibt die Klasse.
+- **Gaudi-Modi, zeitlich begrenzt ab Matchstart:** `lowgravity` halbe Schwerkraft; `sidearms` keine Primärwaffen und Handgranaten, Klassenwerkzeuge inklusive Dynamit und Minen bleiben; `iceskating` Laufgeschwindigkeit ×1,4, Rückstoß verdoppelt; `grenaderain` Handgranaten alle 20 Sekunden aufgefüllt; `headshots` Spieler verletzen Spieler nur per Kopfschuss, Rückstoß bleibt; `vampire` jeder Gegner-Kill heilt 20 Lebenspunkte bis zum Maximum.
+- **Invarianten:** Ohne aktiven Modus entsprechen alle Werte dem bisherigen Verhalten. Ladezeiten werden samt Konfigstring neu gesetzt; Map-Script-Faktoren bleiben multiplikativ erhalten. Nicht-scharfe Werte wie das Minenlimit `-1` bleiben unverändert.
+
+## Rundenauszeichnungen
+
+- **Konfiguration:** `g_etlabAwards 1` aktiviert die weihnachtlichen Auszeichnungen. Standard `0` entspricht dem bisherigen Rundenende ohne zusätzliche Einträge und Chat-Zeilen.
+- **Anzeige:** Am Rundenende in der Awards-Liste des Debriefings vor den Original-Auszeichnungen und als Chat-Ansage: Kopfzeile, danach je vergebener Auszeichnung Titel, Kriterium, Spieler und Wert.
+- **Sprache:** Endpanel und Chat-Zeilen folgen der Spracheinstellung `cl_lang` des jeweiligen Spielers. Deutsch kommt aus `etmain/locale/mod/de.po` im Mod-PK3; alle anderen Sprachen zeigen die englischen Texte. Der Server sendet dafür nur Award-Index, Spieler und Wert (`etlabawards`, `etlabaward`); der Client setzt die Zeile zusammen.
+- **Vergabe:** Nur Spieler in Axis oder Allies mit mindestens einem Punkt. Gleichstand geht an den höher platzierten Spieler; Krampus entscheidet Gleichstand wie das Original über Team-Schaden. Gezählt wird nur während der laufenden Runde; die Zähler leben und werden zurückgesetzt wie die Original-Sessionstatistik.
+- **Invarianten:** Original-Auszeichnungen, deren Bedingungen und Reihenfolge in `CS_ENDGAME_STATS` bleiben unverändert; die neuen Werte werden angehängt. Der Original-Award „I Ain't Got No Friends“ bleibt mit seiner Schwelle von fünf Teamkills bestehen.
+
+| Titel (en) | Titel (de) | Kriterium |
+|---|---|---|
+| Christmas Angel | Christkind | Wiederbelebungen; wie beim Revive-XP ohne zuvor im Team getötete Spieler |
+| Santa's Little Helper | Weihnachtswichtel | Entschärftes gegnerisches Dynamit und gegnerische Landminen, alle Klassen |
+| Star of Bethlehem | Stern von Bethlehem | Per Fernglas entdeckte gegnerische Landminen |
+| Krampus | Krampus | Teamkills, ab einem |
+| Grinch | Grinch | Zerstörte Bauwerke und Missionsziele, für die das Spiel Zerstörungs-XP vergibt; einfache zerbrechliche Objekte ohne XP-Bonus zählen nicht |
+| New Year's Firecracker | Silvesterknaller | Verborgene gegnerische Landminen, durch eigene Handgranate gesprengt |
+| Nutcracker | Nussknacker | Kopfschusstreffer aller Waffen |
+| Silent Night | Stille Nacht | Messer-Kills, beide Messer |
+| Workshop Elf | Werkstatt-Elf | Fertiggestellte Konstruktionen (Endstufe) und vollständig reparierte MG 42 |
+| Secret Santa | Geheimwichtel | Von Teamkameraden aufgenommene Health- und Ammo-Packs |
+
 ## Übungsfeld-Invarianten
 
 - `g_etlabPractice 1` ist opt-in. Zusätzlich müssen lokaler Host, Listenserver und Map `oasis` zutreffen. Auf Dedicated Servern keine Übungsobjekte erzeugen.
@@ -32,6 +62,8 @@ Zweck: Sollverhalten bei Änderungen und Tests erhalten. Regeln gelten für beid
 | Zange | Weapon bank 5; bei mehreren Werkzeugen weiterwechseln |
 | Fernglas | Standardtaste B halten; normaler Fortschritt, etwa 2,5 Sekunden |
 | Übungsobjekte zurücksetzen | F6 / `etlab_targets` |
+| Rundenmodifikator wählen | `callvote modifier <name>`; Liste per `callvote modifier ?` |
+| Rundenauszeichnungen | Rundenende: Debriefing, Awards-Liste; Chat |
 
 Native Klassen-/Loadout-Prüfungen und echte Interaktionen getrennt testen. Für Entschärfungszeiten Soldier/Engineer bei identischem Skill 0 und 4 vergleichen; Waffenwechsel und Annäherung nicht mitzählen. Dynamit kann nach Defuse verzögert entfernt werden, daher Frame-Toleranz zulassen. Bestehende XP-/Charge-Regeln nicht unbeabsichtigt ändern.
 

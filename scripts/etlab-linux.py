@@ -188,7 +188,8 @@ def save_changes():
     check_source(saved, allow_edits=True)
     source = ROOT / saved["sourcePath"]
     for name in git(source, "diff", "--name-only").decode().splitlines():
-        if name != "CMakeLists.txt" and not re.match(r"src/(game|cgame|ui|tvgame)/", name):
+        # Gamecode plus the mod translation catalogs that ship in the mod PK3.
+        if name != "CMakeLists.txt" and not re.match(r"src/(game|cgame|ui|tvgame)/|etmain/locale/mod/", name):
             raise RuntimeError("Aenderung ausserhalb des Mod-Gamecodes: " + name)
     shutil.copy2(PATCH, CACHE / ("patch-backup-" + uuid.uuid4().hex + ".patch"))
     PATCH.write_bytes(source_diff(source))
