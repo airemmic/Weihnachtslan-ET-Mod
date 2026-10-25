@@ -6,6 +6,8 @@ Ein ET: Legacy-Mod für die Weihnachts-LAN. Das Projekt bündelt angepasste Klas
 
 Dieses Projekt wird durch LLM-Agenten entwickelt. Mit Ausnahme der Einleitung richtet sich die Dokumentation an ausführende Agenten; keine persönlichen Anreden oder Schritt-für-Schritt-Anleitungen für menschliche Entwickler ergänzen.
 
+Claude Code lädt über `CLAUDE.md` die gemeinsamen Regeln aus `AGENTS.md`, dem Projektskill und dieser README per `@`-Import. Andere Agenten verwenden die folgenden Einstiegspunkte direkt. Die fachlichen Regeln bleiben in den gemeinsamen Dateien.
+
 1. `AGENTS.md` lesen: Scope, lokale Plattform und Testregeln.
 2. `.agents/skills/etlab-mod/SKILL.md` lesen: Workflow und technische Fallstricke.
 3. Aufgabenabhängige Referenzen laden:

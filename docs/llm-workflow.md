@@ -1,5 +1,12 @@
 # LLM-Workflow
 
+## Claude-Code-Einstieg
+
+- Repository-Root: `CLAUDE.md` importiert `AGENTS.md`, `.agents/skills/etlab-mod/SKILL.md` und `README.md`. Fachreferenzen anschließend nach Aufgabe laden.
+- Gemeinsame Regeln in den importierten Dateien pflegen. Keine Kopien in `.claude/` oder zusätzliche gleichlautende Skills erzeugen.
+- Neue Claude-Code-Sitzung im Repository starten; mit `/context` die geladenen Memory-Dateien prüfen, falls ein tatsächlicher Claude-Ladetest beauftragt ist. Dateiverweise allein sind kein Nachweis einer bereits ausgeführten Claude-Sitzung.
+- Projekt-ZIP muss `CLAUDE.md` und sämtliche importierten Dateien enthalten. Relative Imports verwenden, damit Windows- und Linux-Clones denselben Einstieg erhalten.
+
 ## Vorbedingungen
 
 1. Host-Plattform bestimmen. Nicht aus vorhandener WSL-/Docker-Installation auf einen Linux-Testauftrag schließen; `AGENTS.md` entscheidet.

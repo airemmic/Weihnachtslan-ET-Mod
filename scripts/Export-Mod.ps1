@@ -16,7 +16,7 @@ Compress-Archive -Path (Join-Path $stage '*') -DestinationPath ($stage + '.zip')
 # Explicit allow-list excludes all assets, profiles, binaries, caches and Git metadata.
 $projectStage = Join-Path $etlRoot ('dist/' + $id + '-project')
 New-Item -ItemType Directory -Path $projectStage -Force | Out-Null
-foreach ($name in @('mod','tests','scripts','docs','.agents','AGENTS.md','README.md','LICENSE','release.lock.json','release-linux.lock.json','.gitignore','.gitattributes','ETLab starten.cmd','Mod bauen.cmd')) {
+foreach ($name in @('mod','tests','scripts','docs','.agents','AGENTS.md','CLAUDE.md','README.md','LICENSE','release.lock.json','release-linux.lock.json','.gitignore','.gitattributes','ETLab starten.cmd','Mod bauen.cmd')) {
     $sourceItem = Get-Item -LiteralPath (Join-Path $etlRoot $name)
     if ($sourceItem.PSIsContainer) {
         foreach ($file in (Get-ChildItem -LiteralPath $sourceItem.FullName -File -Recurse -Force)) {
