@@ -14,7 +14,8 @@ Beauftragte Erweiterungen des Weihnachts-LAN-Mods, Stand 25.10.2026. Reihenfolge
 - Ziel: Pro Map ein Modus, am Rundenstart angesagt. Auswahl zufällig aus einer konfigurierbaren Liste oder per Vote.
 - Kandidaten, taktisch verträglich: doppelte XP, verkürzte Spawnzeit, verlängerter Dynamitzünder, Fernglas-Minensuche beschleunigt, Nebenwaffen-Runde (Pistolen und Nahkampf). Gaudi, zeitlich begrenzt: niedrige Gravitation, Messer-only.
 - Einstieg: Cvars und Rundenstart in `g_main.c`; Spawn in `g_client.c`; Waffenfreigaben in `bg_classes.c`; Ansage per Server-Command an `cgame`.
-- Offen: Liste der Modi, Dauer eines Gaudi-Modus, Vote-Integration.
+- Entschieden: Zufall und Vote beide verfügbar, Auswahl vorab per Cvar. Vorgesehen `g_etlabModifiers`: 0 aus, 1 Zufall pro Map, 2 nur per Vote, 3 Zufall mit Vote-Übersteuerung. Modusliste als Cvar-String, damit sie ohne Neubau anpassbar bleibt.
+- Offen: konkrete Modusliste und Dauer eines Gaudi-Modus.
 
 ## 2. Rundenauszeichnungen, weihnachtlich
 
