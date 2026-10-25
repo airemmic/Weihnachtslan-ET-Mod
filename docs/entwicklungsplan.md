@@ -10,6 +10,22 @@ Beauftragte Erweiterungen des Weihnachts-LAN-Mods, Stand 25.10.2026. Reihenfolge
 - Nachweis je Erweiterung: Host-Build, native Assertions, passender Smoke. Grafische Abnahme erst mit vorhandenen Assets und Original-PK3s.
 - Nach jedem abgeschlossenen Punkt zusätzlich den Projektartikel in der Wissensdatenbank nachziehen (Space „WD - Programmieren“, Artikel 4519): Nachweise, Todo-Liste, Verlauf. Nur belegte Ergebnisse eintragen.
 
+## Stand und Übergabe
+
+Stand 25.10.2026. Bei jeder Änderung an Status oder Branch-Lage diesen Abschnitt nachziehen.
+
+- **Ein Mod, ein Repository:** Alle Erweiterungen sind Teile desselben Mods `etlab` (ein `fs_game`, gemeinsame Module, ein `mod/etlab.patch`). Ein Server lädt nur einen Mod; getrennte Mods oder Repositories könnten nicht gemeinsam laufen. Jede Erweiterung bleibt per Cvar einzeln schaltbar.
+- **Branch-Lage:** Aktueller Stand auf `ccr-ad00a20d-4uwhgx`; enthält `ccr-78a33ed0-k5azh0` vollständig. Beide sind noch nicht in `main`. Nach Übernahme nach `main` ist `ccr-78a33ed0-k5azh0` überholt.
+- **Arbeitsweise:** Erweiterungen nacheinander entwickeln und zügig nach `main` übernehmen. Parallele Branches kollidieren in der einen Patch-Datei; Konflikte im Source-Checkout lösen und per `save` neu erzeugen, nie im Patch von Hand mischen.
+- **LAN-Betrieb:** Ohne Cvars verhält sich der Mod wie vor den Erweiterungen. Für die LAN mindestens `g_etlabModifierPool`, `g_etlabModifierMode` und `g_etlabAwards 1` am Server setzen; siehe `installation.md`.
+
+| Punkt | Code und native Tests | Offen |
+|---|---|---|
+| 1. Rundenmodifikatoren | fertig | Runtime-Abnahme mit Original-PK3s, Werte nach Testrunde justieren |
+| 2. Rundenauszeichnungen | fertig, inklusive Deutsch/Englisch nach `cl_lang` | Runtime-Abnahme (Endpanel, Chat, Übersetzung, Zähler im echten Spiel); `Save-ModChanges.ps1` mit `etmain/locale/mod/`-Änderung einmal unter Windows ausführen |
+| 3. Nischenwaffen | nicht begonnen | Werte je Waffe festlegen |
+| 4. Weihnachtsoptik | nicht begonnen | Asset-Pipeline, Umfang |
+
 ## 1. Rundenmodifikatoren
 
 - Ziel: Pro Map ein Modus, am Rundenstart angesagt. Auswahl zufällig aus einer konfigurierbaren Liste oder per Vote.
