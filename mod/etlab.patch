@@ -1,0 +1,661 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 9bce4a23d..59038d88f 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -236,3 +236,9 @@ include(cmake/ETLInstall.cmake)
+ include(cmake/ETLCPack.cmake)
+ 
+ set_target_properties(uninstall PROPERTIES FOLDER ${CMAKE_TARGETS_FOLDER})
++
++option(ETLAB_BUILD_TESTS "Build local ETLab gameplay regression tests" OFF)
++if(ETLAB_BUILD_TESTS)
++	enable_testing()
++	add_subdirectory(tests)
++endif()
+diff --git a/src/cgame/cg_limbopanel.c b/src/cgame/cg_limbopanel.c
+index 55a8fda9c..facb69251 100644
+--- a/src/cgame/cg_limbopanel.c
++++ b/src/cgame/cg_limbopanel.c
+@@ -2627,7 +2627,7 @@ static weapon_t CG_LimboPanel_WeaponPanel_GetSelectableWeaponOption(bg_playercla
+ 	else
+ 	{
+ 		// is player had the minimum level required to use this weapon
+-		if (!BG_IsSkillAvailable(cgs.clientinfo[cg.clientNum].skill, classInfo->classSecondaryWeapons[weapon].skill, classInfo->classSecondaryWeapons[weapon].minSkillLevel))
++		if (!BG_IsSecondaryWeaponAvailable(classInfo, CG_LimboPanel_GetTeam(), cgs.ccSelectedPrimaryWeapon, weapon, cgs.clientinfo[cg.clientNum].skill))
+ 		{
+ 			return WP_NONE;
+ 		}
+@@ -3812,7 +3812,7 @@ int CG_LimboPanel_WeaponCount(int slotNumber)
+ 			}
+ 
+ 			// is player had the minimum level required to use this weapon
+-			if (!BG_IsSkillAvailable(cgs.clientinfo[cg.clientNum].skill, classInfo->classSecondaryWeapons[i].skill, classInfo->classSecondaryWeapons[i].minSkillLevel))
++			if (!BG_IsSecondaryWeaponAvailable(classInfo, CG_LimboPanel_GetTeam(), cgs.ccSelectedPrimaryWeapon, i, cgs.clientinfo[cg.clientNum].skill))
+ 			{
+ 				continue;
+ 			}
+@@ -3876,7 +3876,7 @@ qboolean CG_LimboPanel_IsValidSelectedWeapon(int slot)
+ 		if (classInfo->classSecondaryWeapons[i].weapon == weap)
+ 		{
+ 			// is player had the minimum level required to use this weapon
+-			if (!BG_IsSkillAvailable(cgs.clientinfo[cg.clientNum].skill, classInfo->classSecondaryWeapons[i].skill, classInfo->classSecondaryWeapons[i].minSkillLevel))
++			if (!BG_IsSecondaryWeaponAvailable(classInfo, CG_LimboPanel_GetTeam(), cgs.ccSelectedPrimaryWeapon, i, cgs.clientinfo[cg.clientNum].skill))
+ 			{
+ 				break;
+ 			}
+diff --git a/src/game/bg_classes.c b/src/game/bg_classes.c
+index 9902fc3e0..84c00f99b 100644
+--- a/src/game/bg_classes.c
++++ b/src/game/bg_classes.c
+@@ -59,7 +59,8 @@ bg_playerclass_t bg_playerClasses[2][NUM_PLAYER_CLASSES] =
+ 			},
+ 			{ WP_GRENADE_LAUNCHER,     SK_LIGHT_WEAPONS,                            0,                         4,   0   },
+ 			{
+-				{ WP_BINOCULARS,           SK_BATTLE_SENSE,                             SK_BATTLE_SENSE_BINOCULAR, 1,   0   },
++				{ WP_PLIERS,               SK_EXPLOSIVES_AND_CONSTRUCTION,              0,                         0,   1   },
++				{ WP_BINOCULARS,           SK_BATTLE_SENSE,                             0,                         1,   0   },
+ 			},
+ 			0,
+ 			0,
+@@ -83,7 +84,8 @@ bg_playerclass_t bg_playerClasses[2][NUM_PLAYER_CLASSES] =
+ 				{ WP_MEDIC_SYRINGE,        SK_FIRST_AID,                                0,                         10,  1   },
+ 				{ WP_MEDIC_ADRENALINE,     SK_FIRST_AID,                                SK_MEDIC_ADRENALINE,       0,   1   }, // share ammo with medic syringe
+ 				{ WP_MEDKIT,               SK_FIRST_AID,                                0,                         0,   1   },
+-				{ WP_BINOCULARS,           SK_BATTLE_SENSE,                             SK_BATTLE_SENSE_BINOCULAR, 1,   0   },
++				{ WP_PLIERS,               SK_EXPLOSIVES_AND_CONSTRUCTION,              0,                         0,   1   },
++				{ WP_BINOCULARS,           SK_BATTLE_SENSE,                             0,                         1,   0   },
+ 			},
+ 			0,
+ 			0,
+@@ -109,7 +111,7 @@ bg_playerclass_t bg_playerClasses[2][NUM_PLAYER_CLASSES] =
+ 				{ WP_DYNAMITE,             SK_EXPLOSIVES_AND_CONSTRUCTION,              0,                         0,   1   },
+ 				{ WP_PLIERS,               SK_EXPLOSIVES_AND_CONSTRUCTION,              0,                         0,   1   },
+ 				{ WP_LANDMINE,             SK_EXPLOSIVES_AND_CONSTRUCTION,              0,                         0,   1   },
+-				{ WP_BINOCULARS,           SK_BATTLE_SENSE,                             SK_BATTLE_SENSE_BINOCULAR, 1,   0   },
++				{ WP_BINOCULARS,           SK_BATTLE_SENSE,                             0,                         1,   0   },
+ 			},
+ 			0,
+ 			0,
+@@ -132,6 +134,7 @@ bg_playerclass_t bg_playerClasses[2][NUM_PLAYER_CLASSES] =
+ 			{
+ 				{ WP_AMMO,                 SK_SIGNALS,                                  0,                         0,   1   },
+ 				{ WP_SMOKE_MARKER,         SK_SIGNALS,                                  0,                         0,   1   },
++				{ WP_PLIERS,               SK_EXPLOSIVES_AND_CONSTRUCTION,              0,                         0,   1   },
+ 				{ WP_BINOCULARS,           SK_BATTLE_SENSE,                             0,                         0,   1   },
+ 			},
+ 			0,
+@@ -158,6 +161,7 @@ bg_playerclass_t bg_playerClasses[2][NUM_PLAYER_CLASSES] =
+ 				{ WP_SMOKE_BOMB,           SK_MILITARY_INTELLIGENCE_AND_SCOPED_WEAPONS, 0,                         0,   1   },
+ 				{ WP_SATCHEL,              SK_MILITARY_INTELLIGENCE_AND_SCOPED_WEAPONS, 0,                         0,   1   },
+ 				{ WP_SATCHEL_DET,          SK_MILITARY_INTELLIGENCE_AND_SCOPED_WEAPONS, 0,                         0,   0   },
++				{ WP_PLIERS,               SK_EXPLOSIVES_AND_CONSTRUCTION,              0,                         0,   1   },
+ 				{ WP_BINOCULARS,           SK_BATTLE_SENSE,                             0,                         0,   1   },
+ 			},
+ 			0,
+@@ -187,7 +191,8 @@ bg_playerclass_t bg_playerClasses[2][NUM_PLAYER_CLASSES] =
+ 			},
+ 			{ WP_GRENADE_PINEAPPLE,    SK_LIGHT_WEAPONS,                            0,                         4,   0   },
+ 			{
+-				{ WP_BINOCULARS,           SK_BATTLE_SENSE,                             SK_BATTLE_SENSE_BINOCULAR, 1,   0   },
++				{ WP_PLIERS,               SK_EXPLOSIVES_AND_CONSTRUCTION,              0,                         0,   1   },
++				{ WP_BINOCULARS,           SK_BATTLE_SENSE,                             0,                         1,   0   },
+ 			},
+ 			0,
+ 			0,
+@@ -211,7 +216,8 @@ bg_playerclass_t bg_playerClasses[2][NUM_PLAYER_CLASSES] =
+ 				{ WP_MEDIC_SYRINGE,        SK_FIRST_AID,                                0,                         10,  1   },
+ 				{ WP_MEDIC_ADRENALINE,     SK_FIRST_AID,                                SK_MEDIC_ADRENALINE,       0,   1   }, // share ammo with medic syringe
+ 				{ WP_MEDKIT,               SK_FIRST_AID,                                0,                         0,   1   },
+-				{ WP_BINOCULARS,           SK_BATTLE_SENSE,                             SK_BATTLE_SENSE_BINOCULAR, 1,   0   },
++				{ WP_PLIERS,               SK_EXPLOSIVES_AND_CONSTRUCTION,              0,                         0,   1   },
++				{ WP_BINOCULARS,           SK_BATTLE_SENSE,                             0,                         1,   0   },
+ 			},
+ 			0,
+ 			0,
+@@ -237,7 +243,7 @@ bg_playerclass_t bg_playerClasses[2][NUM_PLAYER_CLASSES] =
+ 				{ WP_DYNAMITE,             SK_EXPLOSIVES_AND_CONSTRUCTION,              0,                         0,   1   },
+ 				{ WP_PLIERS,               SK_EXPLOSIVES_AND_CONSTRUCTION,              0,                         0,   1   },
+ 				{ WP_LANDMINE,             SK_EXPLOSIVES_AND_CONSTRUCTION,              0,                         0,   1   },
+-				{ WP_BINOCULARS,           SK_BATTLE_SENSE,                             SK_BATTLE_SENSE_BINOCULAR, 1,   0   },
++				{ WP_BINOCULARS,           SK_BATTLE_SENSE,                             0,                         1,   0   },
+ 			},
+ 			0,
+ 			0,
+@@ -260,6 +266,7 @@ bg_playerclass_t bg_playerClasses[2][NUM_PLAYER_CLASSES] =
+ 			{
+ 				{ WP_AMMO,                 SK_SIGNALS,                                  0,                         0,   1   },
+ 				{ WP_SMOKE_MARKER,         SK_SIGNALS,                                  0,                         0,   1   },
++				{ WP_PLIERS,               SK_EXPLOSIVES_AND_CONSTRUCTION,              0,                         0,   1   },
+ 				{ WP_BINOCULARS,           SK_BATTLE_SENSE,                             0,                         0,   1   },
+ 			},
+ 			0,
+@@ -286,6 +293,7 @@ bg_playerclass_t bg_playerClasses[2][NUM_PLAYER_CLASSES] =
+ 				{ WP_SMOKE_BOMB,           SK_MILITARY_INTELLIGENCE_AND_SCOPED_WEAPONS, 0,                         0,   1   },
+ 				{ WP_SATCHEL,              SK_MILITARY_INTELLIGENCE_AND_SCOPED_WEAPONS, 0,                         0,   1   },
+ 				{ WP_SATCHEL_DET,          SK_MILITARY_INTELLIGENCE_AND_SCOPED_WEAPONS, 0,                         0,   0   },
++				{ WP_PLIERS,               SK_EXPLOSIVES_AND_CONSTRUCTION,              0,                         0,   1   },
+ 				{ WP_BINOCULARS,           SK_BATTLE_SENSE,                             0,                         0,   1   },
+ 			},
+ 			0,
+@@ -367,6 +375,50 @@ qboolean BG_WeaponIsPrimaryForClassAndTeam(int classnum, team_t team, weapon_t w
+ 	return qfalse;
+ }
+ 
++/**
++ * @brief Automatic Akimbo sidearm for the selected heavy assault loadout.
++ */
++weapon_t BG_HeavyLoadoutAkimbo(int classNum, team_t team, weapon_t primaryWeapon)
++{
++	if (classNum != PC_SOLDIER || (team != TEAM_AXIS && team != TEAM_ALLIES))
++	{
++		return WP_NONE;
++	}
++
++	if (primaryWeapon == WP_PANZERFAUST || primaryWeapon == WP_BAZOOKA || primaryWeapon == WP_FLAMETHROWER)
++	{
++		return team == TEAM_AXIS ? WP_AKIMBO_LUGER : WP_AKIMBO_COLT;
++	}
++
++	return WP_NONE;
++}
++
++/**
++ * @brief Shared availability for the Limbo menu and authoritative spawn loadout.
++ */
++qboolean BG_IsSecondaryWeaponAvailable(bg_playerclass_t *classInfo, team_t team, weapon_t primaryWeapon, int index, int *skills)
++{
++	bg_weaponclass_t *entry;
++	weapon_t bonus = BG_HeavyLoadoutAkimbo(classInfo->classNum, team, primaryWeapon);
++
++	if (index < 0 || index >= MAX_WEAPS_PER_CLASS)
++	{
++		return qfalse;
++	}
++
++	entry = &classInfo->classSecondaryWeapons[index];
++	if (!entry->weapon || entry->weapon == primaryWeapon)
++	{
++		return qfalse;
++	}
++	if (bonus && (GetWeaponTableData(entry->weapon)->type & WEAPON_TYPE_PISTOL))
++	{
++		return entry->weapon == bonus;
++	}
++
++	return BG_IsSkillAvailable(skills, entry->skill, entry->minSkillLevel);
++}
++
+ /**
+  * @brief BG_GetBestSecondaryWeapon
+  * @param[in] classNum
+@@ -381,7 +433,12 @@ weapon_t BG_GetBestSecondaryWeapon(int classNum, team_t team, weapon_t primaryWe
+ 	weapon_t         weap = WP_NONE;
+ 	bg_playerclass_t *classInfo;
+ 
+-	classInfo = GetPlayerClassesData(team, classNum);
++	classInfo = BG_GetPlayerClassInfo(team, classNum);
++	weap = BG_HeavyLoadoutAkimbo(classNum, team, primaryWeapon);
++	if (weap)
++	{
++		return weap;
++	}
+ 
+ 	for (i = 0; i < MAX_WEAPS_PER_CLASS; i++)
+ 	{
+@@ -391,7 +448,7 @@ weapon_t BG_GetBestSecondaryWeapon(int classNum, team_t team, weapon_t primaryWe
+ 		}
+ 
+ 		// is player had the minimum level required to use this weapon
+-		if (!BG_IsSkillAvailable(skills, classInfo->classSecondaryWeapons[i].skill, classInfo->classSecondaryWeapons[i].minSkillLevel))
++		if (!BG_IsSecondaryWeaponAvailable(classInfo, team, primaryWeapon, i, skills))
+ 		{
+ 			continue;
+ 		}
+diff --git a/src/game/bg_pmove.c b/src/game/bg_pmove.c
+index d4164bc9e..cda79cad9 100644
+--- a/src/game/bg_pmove.c
++++ b/src/game/bg_pmove.c
+@@ -4087,6 +4087,13 @@ static void PM_Weapon(void)
+ 	// handle the charge time
+ 	pm->ps->classWeaponTime = weaponChargeTime;
+ 
++	// Non-Engineers can only defuse with pliers and work at half the Engineer cadence.
++	// Keep this in shared prediction; per-action progress and skill bonuses stay unchanged.
++	if (pm->ps->weapon == WP_PLIERS && pm->ps->stats[STAT_PLAYER_CLASS] != PC_ENGINEER)
++	{
++		addTime *= 2;
++	}
++
+ 	pm->ps->weaponTime += addTime;
+ 
+ #ifdef CGAMEDLL
+diff --git a/src/game/bg_public.h b/src/game/bg_public.h
+index ebdba6d25..42d418c5c 100644
+--- a/src/game/bg_public.h
++++ b/src/game/bg_public.h
+@@ -2659,6 +2659,8 @@ bg_playerclass_t *BG_GetPlayerClassInfo(int team, int cls);
+ bg_playerclass_t *BG_PlayerClassForPlayerState(playerState_t *ps);
+ qboolean BG_ClassHasWeapon(bg_playerclass_t *classInfo, weapon_t weap);
+ qboolean BG_WeaponIsPrimaryForClassAndTeam(int classnum, team_t team, weapon_t weapon);
++weapon_t BG_HeavyLoadoutAkimbo(int classNum, team_t team, weapon_t primaryWeapon);
++qboolean BG_IsSecondaryWeaponAvailable(bg_playerclass_t *classInfo, team_t team, weapon_t primaryWeapon, int index, int *skills);
+ weapon_t BG_GetBestSecondaryWeapon(int classNum, team_t team, weapon_t primaryWeapon, int *skills);
+ int BG_ClassWeaponCount(bg_playerclass_t *classInfo, team_t team);
+ const char *BG_ShortClassnameForNumber(int classNum);
+diff --git a/src/game/g_client.c b/src/game/g_client.c
+index 084617b25..10afbe624 100644
+--- a/src/game/g_client.c
++++ b/src/game/g_client.c
+@@ -1317,6 +1317,10 @@ void SetWolfSpawnWeapons(gclient_t *client)
+ 	// secondary weapon
+ 	//
+ 	weaponClassInfo = &classInfo->classSecondaryWeapons[0];   // default secondary weapon
++	if (BG_HeavyLoadoutAkimbo(pc, team, weaponPrimary))
++	{
++		weaponClassInfo = &classInfo->classSecondaryWeapons[1];
++	}
+ 
+ 	// ensure weapon is valid
+ 	if (!IS_VALID_WEAPON(client->sess.playerWeapon2))
+@@ -1327,8 +1331,7 @@ void SetWolfSpawnWeapons(gclient_t *client)
+ 	// parse available secondary weapons and check is valid for current class
+ 	for (i = 0; i < MAX_WEAPS_PER_CLASS && classInfo->classSecondaryWeapons[i].weapon; i++)
+ 	{
+-		if (BG_IsSkillAvailable(client->sess.skill, classInfo->classSecondaryWeapons[i].skill, classInfo->classSecondaryWeapons[i].minSkillLevel)
+-		    && client->sess.skill[classInfo->classSecondaryWeapons[i].skill] >= classInfo->classSecondaryWeapons[i].minSkillLevel)
++		if (BG_IsSecondaryWeaponAvailable(classInfo, team, weaponPrimary, i, client->sess.skill))
+ 		{
+ 			if (classInfo->classSecondaryWeapons[i].weapon == client->sess.playerWeapon2)
+ 			{
+@@ -1338,12 +1341,24 @@ void SetWolfSpawnWeapons(gclient_t *client)
+ 		}
+ 	}
+ 
++	client->sess.playerWeapon2 = weaponClassInfo->weapon;
++
+ 	// add secondary weapon, but only if it's different from the primary one
+ 	if (weaponClassInfo->weapon != weaponPrimary)
+ 	{
+ 		AddWeaponToPlayer(client, weaponClassInfo->weapon, weaponClassInfo->startingAmmo, weaponClassInfo->startingClip, qfalse);
+ 	}
+ 
++	// The heavy-loadout sidearm also remains available with the level-4 SMG secondary.
++	if (BG_HeavyLoadoutAkimbo(pc, team, weaponPrimary))
++	{
++		weaponClassInfo = &classInfo->classSecondaryWeapons[1];
++		if (!COM_BitCheck(client->ps.weapons, weaponClassInfo->weapon))
++		{
++			AddWeaponToPlayer(client, weaponClassInfo->weapon, weaponClassInfo->startingAmmo, weaponClassInfo->startingClip, qfalse);
++		}
++	}
++
+ 	//
+ 	// special weapons and items
+ 	//
+@@ -3474,6 +3489,11 @@ void ClientSpawn(gentity_t *ent, qboolean revived, qboolean teamChange, qboolean
+ 	// clear entity state values
+ 	BG_PlayerStateToEntityState(&client->ps, &ent->s, level.time, qfalse);
+ 
++	if (!revived)
++	{
++		G_ETLabPracticeTargets(ent);
++	}
++
+ 	// G_ResetMarkers(ent);
+ 
+ 	// start the scripting system
+diff --git a/src/game/g_cmds.c b/src/game/g_cmds.c
+index 31f829b8d..ca180f6e5 100644
+--- a/src/game/g_cmds.c
++++ b/src/game/g_cmds.c
+@@ -5345,6 +5345,12 @@ void ClientCommand(int clientNum)
+ 	}
+ #endif
+ 
++	if (!Q_stricmp(cmd, "etlab_targets"))
++	{
++		G_ETLabPracticeTargets(ent);
++		return;
++	}
++
+ 	if (G_commandCheck(ent, cmd))
+ 	{
+ 		return;
+diff --git a/src/game/g_combat.c b/src/game/g_combat.c
+index 576d8fa7f..9138d9b1c 100644
+--- a/src/game/g_combat.c
++++ b/src/game/g_combat.c
+@@ -1551,9 +1551,11 @@ void G_DamageExt(gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, vec
+ 	case ET_MISSILE:
+ 		if (targ->methodOfDeath == MOD_LANDMINE)
+ 		{
+-			if (targ->s.modelindex2)
++			// Hidden armed mines: hand grenades only. Revealed mines: bullets or explosives.
++			if (G_LandmineArmed(targ) || G_LandmineTriggered(targ))
+ 			{
+-				if (GetMODTableData(mod)->isExplosive)
++				if ((targ->s.modelindex2 && (GetMODTableData(mod)->isExplosive || GetMODTableData(mod)->isHeadshot)) ||
++				    mod == MOD_GRENADE_LAUNCHER || mod == MOD_GRENADE_PINEAPPLE)
+ 				{
+ 					mapEntityData_t *mEnt;
+ 
+diff --git a/src/game/g_local.h b/src/game/g_local.h
+index 83781ff08..eb3b5ceee 100644
+--- a/src/game/g_local.h
++++ b/src/game/g_local.h
+@@ -1718,6 +1718,10 @@ void aagun_stopusing(gentity_t *self);
+ float AngleDifference(float ang1, float ang2);
+ qboolean G_FlingClient(gentity_t *vic, int flingType);
+ 
++qboolean G_CanUsePliersOn(const gentity_t *player, const gentity_t *target);
++void G_ETLabPracticeTargets(gentity_t *player);
++void G_RevealLandmine(gentity_t *mine);
++
+ void G_PreFilledMissileEntity(gentity_t *ent, int weaponNum, int realWeapon, int ownerNum, team_t teamNum, int clientNum, gentity_t *parent, const vec3_t start, const vec3_t dir);
+ 
+ int G_GetEnemyPosition(gentity_t *ent, gentity_t *targ);
+diff --git a/src/game/g_main.c b/src/game/g_main.c
+index d4334cfcc..96e59e504 100644
+--- a/src/game/g_main.c
++++ b/src/game/g_main.c
+@@ -530,7 +530,7 @@ void G_CheckForCursorHints(gentity_t *ent)
+ 		hintDist = CH_MAX_DIST;
+ 	}
+ 
+-	if (ps->stats[STAT_PLAYER_CLASS] == PC_COVERTOPS)
++	if (ps->stats[STAT_KEYS] & (1 << INV_BINOCS))
+ 	{
+ 		if (ent->client->landmineSpottedTime && level.time - ent->client->landmineSpottedTime < 500)
+ 		{
+@@ -936,7 +936,7 @@ void G_CheckForCursorHints(gentity_t *ent)
+ 				}
+ 				break;
+ 			case ET_MISSILE:
+-				if (ps->stats[STAT_PLAYER_CLASS] == PC_ENGINEER)
++				if (COM_BitCheck(ps->weapons, WP_PLIERS) && G_CanUsePliersOn(ent, checkEnt))
+ 				{
+ 					hintDist = CH_BREAKABLE_DIST;
+ 					if (checkEnt->methodOfDeath == MOD_DYNAMITE && G_LegacyRevive_IsFirstReviveRestricted(ent))
+diff --git a/src/game/g_missile.c b/src/game/g_missile.c
+index 1166f38bc..f043188c7 100644
+--- a/src/game/g_missile.c
++++ b/src/game/g_missile.c
+@@ -1806,7 +1806,7 @@ qboolean G_LandmineSnapshotCallback(int entityNum, int clientNum)
+ 	}
+ 
+ 	// fix for covops spotting
+-	if (clEnt->client->sess.playerType == PC_COVERTOPS && (clEnt->client->ps.eFlags & EF_ZOOMING) && (clEnt->client->ps.stats[STAT_KEYS] & (1 << INV_BINOCS)))
++	if ((clEnt->client->ps.eFlags & EF_ZOOMING) && (clEnt->client->ps.stats[STAT_KEYS] & (1 << INV_BINOCS)))
+ 	{
+ 		return qtrue;
+ 	}
+diff --git a/src/game/g_teammapdata.c b/src/game/g_teammapdata.c
+index b7e7e2bd3..515282223 100644
+--- a/src/game/g_teammapdata.c
++++ b/src/game/g_teammapdata.c
+@@ -1170,7 +1170,7 @@ void G_CheckSpottedLandMines(void)
+ 			continue;
+ 		}
+ 
+-		if (ent->client->sess.playerType == PC_COVERTOPS && (ent->client->ps.eFlags & EF_ZOOMING))
++		if ((ent->client->ps.stats[STAT_KEYS] & (1 << INV_BINOCS)) && (ent->client->ps.eFlags & EF_ZOOMING))
+ 		{
+ 			G_SetupFrustum_ForBinoculars(ent);
+ 
+@@ -1211,21 +1211,7 @@ void G_CheckSpottedLandMines(void)
+ 									{
+ 										ent->client->landmineSpotted->count2 = 250;
+ 
+-										ent->client->landmineSpotted->s.modelindex2 = 1;
+-
+-										ent->client->landmineSpotted->takedamage = qtrue;
+-
+-										ent->client->landmineSpotted->r.snapshotCallback = qfalse;
+-
+-										// for marker
+-										// Landmine flags shouldn't block our view
+-										// don't do this if the mine has been triggered.
+-										if (!G_LandmineTriggered(ent->client->landmineSpotted))
+-										{
+-											ent->client->landmineSpotted->s.frame    = rand() % 20;
+-											ent->client->landmineSpotted->r.contents = CONTENTS_TRANSLUCENT;
+-											trap_LinkEntity(ent->client->landmineSpotted);
+-										}
++										G_RevealLandmine(ent2);
+ 
+ 										G_PopupMessageForMines(ent);
+ 
+diff --git a/src/game/g_weapon.c b/src/game/g_weapon.c
+index b5d39ff9f..5ef09e8f4 100644
+--- a/src/game/g_weapon.c
++++ b/src/game/g_weapon.c
+@@ -1845,6 +1845,7 @@ void G_ArmLandmine(gentity_t *traceEnt, gentity_t *ent)
+ 	traceEnt->timestamp = level.time + 1000;
+ 	traceEnt->health    = 0;
+ 
++	traceEnt->takedamage   = qtrue; // Hidden mines accept hand-grenade damage only (G_DamageExt).
+ 	traceEnt->s.effect1Time = 1; // armed
+ 	traceEnt->s.modelindex2 = 0;
+ 
+@@ -1889,7 +1890,10 @@ void G_DisarmLandmine(gentity_t *traceEnt, gentity_t *ent)
+ 
+ 		trap_SendServerCommand(ent - g_entities, "cp \"Landmine defused\" 1");
+ 
+-		Add_Ammo(ent, WP_LANDMINE, 1, qfalse);
++		if (ent->client->sess.playerType == PC_ENGINEER)
++		{
++			Add_Ammo(ent, WP_LANDMINE, 1, qfalse);
++		}
+ 
+ 		if (traceEnt->s.teamNum != ent->client->sess.sessionTeam)
+ 		{
+@@ -2415,6 +2419,17 @@ void G_DisarmDynamite(gentity_t *traceEnt, gentity_t *ent)
+  * @brief Weapon_Engineer
+  * @param[in,out] ent
+  */
++qboolean G_CanUsePliersOn(const gentity_t *player, const gentity_t *target)
++{
++	if (player->client->sess.playerType == PC_ENGINEER)
++	{
++		return qtrue;
++	}
++	return target->s.eType == ET_MISSILE &&
++	       ((target->methodOfDeath == MOD_LANDMINE && (target->s.effect1Time == 1 || target->s.effect1Time == 2)) ||
++	        (target->methodOfDeath == MOD_DYNAMITE && target->s.effect1Time));
++}
++
+ gentity_t *Weapon_Engineer(gentity_t *ent)
+ {
+ 	trace_t   tr;
+@@ -2433,6 +2448,31 @@ gentity_t *Weapon_Engineer(gentity_t *ent)
+ 
+ 	VectorMA(muzzleTrace, CH_MAX_DIST, forward, end);
+ 
++	// Other classes have a defusing tool, not the Engineer's full toolkit.
++	if (ent->client->sess.playerType != PC_ENGINEER)
++	{
++		trap_EngineerTrace(ent, &tr, muzzleTrace, NULL, NULL, end, ent->s.number, MASK_SHOT);
++		if ((tr.surfaceFlags & SURF_NOIMPACT) || tr.fraction == 1.0f ||
++		    tr.entityNum == ENTITYNUM_NONE || tr.entityNum == ENTITYNUM_WORLD ||
++		    VectorDistance(muzzleTrace, tr.endpos) > CH_BREAKABLE_DIST)
++		{
++			return NULL;
++		}
++		traceEnt = &g_entities[tr.entityNum];
++		if (G_CanUsePliersOn(ent, traceEnt))
++		{
++			if (traceEnt->methodOfDeath == MOD_LANDMINE)
++			{
++				G_DisarmLandmine(traceEnt, ent);
++			}
++			else if (!G_LegacyRevive_IsFirstReviveRestricted(ent))
++			{
++				G_DisarmDynamite(traceEnt, ent);
++			}
++		}
++		return NULL;
++	}
++
+ 	// First, we try the specific case where emplaced can be repaired.
+ 	// But since the TOI is a different ent from the emplaced gun
+ 	// it may block the repair process, so we ignore it.
+@@ -2491,6 +2531,13 @@ gentity_t *Weapon_Engineer(gentity_t *ent)
+ 		vec3_t  base;
+ 		vec3_t  tr_down = { 0, 0, 16 };
+ 
++		// Arming requires suitable soil; defusing an existing armed mine does not.
++		if (!G_LandmineUnarmed(traceEnt))
++		{
++			G_DisarmLandmine(traceEnt, ent);
++			return NULL;
++		}
++
+ 		VectorSubtract(traceEnt->s.pos.trBase, tr_down, base);
+ 
+ 		trap_EngineerTrace(ent, &tr2, traceEnt->s.pos.trBase, NULL, NULL, base, traceEnt->s.number, MASK_SHOT);
+@@ -2503,14 +2550,7 @@ gentity_t *Weapon_Engineer(gentity_t *ent)
+ 			return NULL;
+ 		}
+ 
+-		if (G_LandmineUnarmed(traceEnt))
+-		{
+-			G_ArmLandmine(traceEnt, ent);
+-		}
+-		else
+-		{
+-			G_DisarmLandmine(traceEnt, ent);
+-		}
++		G_ArmLandmine(traceEnt, ent);
+ 	}
+ 	else if (traceEnt->methodOfDeath == MOD_SATCHEL)
+ 	{
+@@ -4391,3 +4431,129 @@ void FireWeapon(gentity_t *ent)
+ 
+ 	ent->client->sess.aWeaponStats[GetWeaponTableData(ent->s.weapon)->indexWeaponStat].atts++;
+ }
++
++
++/* ETLab: a revealed flag can be shot without blocking player movement. */
++void G_RevealLandmine(gentity_t *mine)
++{
++	mine->s.modelindex2 = 1;
++	mine->takedamage = qtrue;
++	mine->r.snapshotCallback = qfalse;
++	mine->s.frame = rand() % 20;
++	mine->r.contents = CONTENTS_CORPSE;
++	VectorSet(mine->r.mins, -12, -12, 0);
++	VectorSet(mine->r.maxs, 12, 12, 40);
++	trap_LinkEntity(mine);
++}
++
++/* Local opt-in practice fixtures only. No changes to normal map spawning. */
++void G_ETLabPracticeTargets(gentity_t *player)
++{
++	static const float angles[] = { 0, 15, -15, 30, -30, 45, -45, 60, -60, 75, -75, 90, -90, 120, -120, 150, -150, 180 };
++	vec3_t positions[4], start, end, facing, direction;
++	trace_t tr;
++	int i, j, ring, count = 0;
++	team_t enemy;
++	char map[MAX_QPATH];
++
++	if (!player->client || !player->client->pers.localClient || player->health <= 0 ||
++	    (player->client->sess.sessionTeam != TEAM_AXIS && player->client->sess.sessionTeam != TEAM_ALLIES) ||
++	    !trap_Cvar_VariableIntegerValue("g_etlabPractice") || trap_Cvar_VariableIntegerValue("dedicated"))
++	{
++		return;
++	}
++	trap_Cvar_VariableStringBuffer("mapname", map, sizeof(map));
++	if (Q_stricmp(map, "oasis"))
++	{
++		return;
++	}
++
++	// Remove only our own fixtures and their command-map markers, including after team changes.
++	for (i = MAX_CLIENTS; i < level.num_entities; i++)
++	{
++		gentity_t *target = &g_entities[i];
++		if (target->inuse && target->targetname && !Q_stricmp(target->targetname, "etlab_practice_target"))
++		{
++			for (j = 0; j < 2; j++)
++			{
++				mapEntityData_t *marker = G_FindMapEntityData(&mapEntityData[j], i);
++				if (marker) { G_FreeMapEntityData(&mapEntityData[j], marker); }
++			}
++			G_FreeEntity(target);
++		}
++	}
++
++	// Find dry, visible ground around the current spawn, never through walls or over a drop.
++	for (ring = 0; ring < 6 && count < 4; ring++)
++	{
++		for (i = 0; i < ARRAY_LEN(angles) && count < 4; i++)
++		{
++			VectorSet(facing, 0, player->client->ps.viewangles[YAW] + angles[i], 0);
++			AngleVectors(facing, direction, NULL, NULL);
++			VectorCopy(player->client->ps.origin, start);
++			start[2] += 24;
++			VectorMA(start, 160 + ring * 80, direction, end);
++			trap_Trace(&tr, start, NULL, NULL, end, player->s.number, MASK_SOLID);
++			if (tr.startsolid || tr.fraction < 1) { continue; }
++			VectorCopy(end, start);
++			end[2] -= 200;
++			trap_Trace(&tr, start, NULL, NULL, end, player->s.number, MASK_SOLID);
++			if (tr.startsolid || tr.fraction == 1 || tr.plane.normal[2] < 0.85f ||
++			    (tr.surfaceFlags & SURF_NOIMPACT)) { continue; }
++			tr.endpos[2] += 2;
++			if (trap_PointContents(tr.endpos, player->s.number) & MASK_WATER) { continue; }
++			for (j = 0; j < count; j++)
++			{
++				if (DistanceSquared(positions[j], tr.endpos) < Square(110)) { break; }
++			}
++			if (j < count) { continue; }
++			VectorCopy(tr.endpos, positions[count]);
++			count++;
++		}
++	}
++	if (count < 4)
++	{
++		trap_SendServerCommand(player->s.number, "cp \"ETLab: Go to open ground and press F6 for practice targets.\"");
++		G_Printf("ETLAB_PRACTICE_NO_SPACE: %d valid positions\n", count);
++		return;
++	}
++	enemy = player->client->sess.sessionTeam == TEAM_AXIS ? TEAM_ALLIES : TEAM_AXIS;
++	for (i = 0; i < 4; i++)
++	{
++		gentity_t *target = G_Spawn();
++		int weapon = i == 3 ? WP_DYNAMITE : WP_LANDMINE;
++		G_PreFilledMissileEntity(target, weapon, weapon, ENTITYNUM_WORLD, enemy,
++		                        player->s.number, &g_entities[ENTITYNUM_WORLD], positions[i], vec3_origin);
++		target->targetname = "etlab_practice_target";
++		G_SetOrigin(target, positions[i]);
++		target->s.groundEntityNum = ENTITYNUM_WORLD;
++		target->s.otherEntityNum = ENTITYNUM_WORLD;
++		target->timestamp = 0;
++		target->health = 0;
++		if (weapon == WP_LANDMINE)
++		{
++			target->s.effect1Time = 1;
++			target->takedamage = qtrue;
++			target->r.contents = 0;
++			target->r.snapshotCallback = qtrue;
++			target->think = G_LandminePrime;
++			target->nextthink = level.time + 2000;
++			if (i == 2) { G_RevealLandmine(target); }
++		}
++		else
++		{
++			// Long, but real fuse: enough time to approach and defuse. F6 resets it.
++			target->s.effect1Time = level.time ? level.time : 1;
++			target->think = G_ExplodeMissile;
++			target->nextthink = level.time + 300000;
++		}
++		trap_LinkEntity(target);
++		G_Printf("ETLAB_PRACTICE_TARGET: id=%d weapon=%d enemy=%d spotted=%d origin=%s\n",
++		         target->s.number, weapon, enemy, target->s.modelindex2, vtos(positions[i]));
++	}
++	VectorSubtract(positions[0], player->client->ps.origin, direction);
++	direction[2] -= player->client->ps.viewheight;
++	vectoangles(direction, facing);
++	SetClientViewAngle(player, facing);
++	trap_SendServerCommand(player->s.number, "cp \"ETLab: 2 hidden mines, 1 flagged mine, armed dynamite (5 min). F6: reset.\"");
++}

@@ -1,0 +1,10 @@
+{
+    "version":  "2.86.2",
+    "tag":  "v2.86.2",
+    "sourceUrl":  "https://github.com/etlegacy/etlegacy.git",
+    "commit":  "fdb40f8706b4e5081bf721cdc5726b2791a6e1f9",
+    "downloadUrl":  "https://www.etlegacy.com/download/file/793",
+    "archiveMd5":  "67d978ad7a798c2c25f19e7e683bdc1d",
+    "archiveSha256":  "B516A01AF3DA376A7EC355B7C9A72675AD7CF1E06F08D3B5B2453E0250D7CF79",
+    "policy":  "latest-published-stable"
+}
