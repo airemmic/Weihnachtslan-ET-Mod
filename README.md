@@ -1,4 +1,4 @@
-# ETLab-Mod
+# Weihnachtslan-ET-Mod
 
 Eigenständiges Entwicklungsprojekt für unseren ET: Legacy-Gamecode-Mod. Die Engine bleibt das unveränderte offizielle Release. Der Mod enthält Akimbo für schwere Loadouts, Entschärfungszangen und Fernglas für alle Klassen sowie erweiterte Minenregeln. [Alle Spielregeln](docs/spielregeln.md).
 
@@ -28,8 +28,8 @@ Benötigt werden Git, Windows PowerShell 5.1, `curl.exe` und Visual Studio 2022 
 1. Dieses Mod-Repository klonen und in den Projektordner wechseln:
 
    ```powershell
-   git clone https://github.com/tschinagl/ETLab-Mod.git
-   cd ETLab-Mod
+   git clone https://github.com/tschinagl/Weihnachtslan-ET-Mod.git
+   cd Weihnachtslan-ET-Mod
    ```
 2. Die Original-Spieldaten aus einer vorhandenen ET-Installation importieren:
 
@@ -43,7 +43,7 @@ Die Entwickler benötigen die Build-Tools. Spieler benötigen nur eine passende 
 
 ## Gemeinsam entwickeln
 
-Beide arbeiten an diesem kleinen Mod-Repository, jeweils auf einem eigenen Branch. Eine Änderung gemeinsam beschreiben, umsetzen, testen und über einen Pull Request zusammenführen. Das gemeinsame öffentliche Repository ist [tschinagl/ETLab-Mod](https://github.com/tschinagl/ETLab-Mod).
+Beide arbeiten an diesem kleinen Mod-Repository, jeweils auf einem eigenen Branch. Eine Änderung gemeinsam beschreiben, umsetzen, testen und über einen Pull Request zusammenführen. Das gemeinsame öffentliche Repository ist [tschinagl/Weihnachtslan-ET-Mod](https://github.com/tschinagl/Weihnachtslan-ET-Mod).
 
 1. `Mod bauen.cmd` ausführen: aktuelle stabile Basis vorbereiten.
 2. Den von `Prepare-Mod.ps1` ausgegebenen Source-Ordner bearbeiten. Der aktive Pfad steht zusätzlich in `.cache/state.json` unter `sourcePath`. Darin liegen die vertrauten Dateien `src/game/`, `src/cgame/` usw. [Code-Orientierung](docs/code-landkarte.md).
