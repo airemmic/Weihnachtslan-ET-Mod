@@ -12,6 +12,76 @@ index 9bce4a2..59038d8 100644
 +	enable_testing()
 +	add_subdirectory(tests)
 +endif()
+diff --git a/src/cgame/cg_debriefing.c b/src/cgame/cg_debriefing.c
+index 373a9f2..6517bbe 100644
+--- a/src/cgame/cg_debriefing.c
++++ b/src/cgame/cg_debriefing.c
+@@ -3762,7 +3762,7 @@ void CG_Debriefing_MissionTitle_Draw(panel_button_t *button)
+ 	CG_Text_Paint_Ext(x, button->rect.y + 16, 0.25f, 0.25f, clrTxtBck, s, 0, 0, 0, &cgs.media.limboFont1);
+ }
+ 
+-const char *awardNames[NUM_ENDGAME_AWARDS] =
++const char *awardNames[NUM_ORIGINAL_ENDGAME_AWARDS] =
+ {
+ 	"Highest Ranking Officer",
+ #ifdef FEATURE_RATING
+@@ -3790,14 +3790,25 @@ const char *awardNames[NUM_ENDGAME_AWARDS] =
+ 	"Welcome Newbie! Award",
+ };
+ 
++/**
++ * @brief ETLab: award index for a list position, Christmas awards first, then the original awards
++ * @param[in] position
++ * @return
++ */
++static int CG_Debriefing_AwardIndex(int position)
++{
++	return position < ETLAB_AWARD_COUNT ? NUM_ORIGINAL_ENDGAME_AWARDS + position : position - ETLAB_AWARD_COUNT;
++}
++
+ /**
+  * @brief CG_Debriefing_Awards_Draw
+  * @param[in] button
+  */
+ void CG_Debriefing_Awards_Draw(panel_button_t *button)
+ {
+-	int   i, j;
+-	float y = button->rect.y + 1;
++	int   i, j, award;
++	int   skip = cgs.dbAwardsListOffset;    // the scroll offset counts given awards only
++	float y    = button->rect.y + 1;
+ 
+ 	// fallback - should be done already
+ 	if (!cgs.dbAwardsParsed)
+@@ -3807,19 +3818,22 @@ void CG_Debriefing_Awards_Draw(panel_button_t *button)
+ 
+ 	for (i = 0, j = 0; i < NUM_ENDGAME_AWARDS && j < NUMSHOW_ENDGAME_AWARDS; ++i)
+ 	{
+-		if (i + cgs.dbAwardsListOffset >= NUM_ENDGAME_AWARDS)
++		award = CG_Debriefing_AwardIndex(i);
++
++		if (cgs.dbAwardTeams[award] == TEAM_FREE)
+ 		{
+-			break;
++			continue;
+ 		}
+ 
+-		if (cgs.dbAwardTeams[i + cgs.dbAwardsListOffset] == TEAM_FREE)
++		if (skip > 0)
+ 		{
++			skip--;
+ 			continue;
+ 		}
+ 
+-		CG_DrawPic(button->rect.x + 6, y + 2, 18, 12, CG_GetTeamFlag(cgs.dbAwardTeams[i + cgs.dbAwardsListOffset]));
+-		CG_Text_Paint_Ext(button->rect.x + 28, y + 11, 0.19f, 0.19f, clrTxtBck, CG_TranslateString(awardNames[i + cgs.dbAwardsListOffset]), 0, 0, 0, &cgs.media.limboFont2);
+-		CG_Text_Paint_Ext(button->rect.x + 28 + 180, y + 11, 0.19f, 0.19f, clrTxtBck, va("^7%s", cgs.dbAwardNames[i + cgs.dbAwardsListOffset]), 0, 0, 0, &cgs.media.limboFont2);
++		CG_DrawPic(button->rect.x + 6, y + 2, 18, 12, CG_GetTeamFlag(cgs.dbAwardTeams[award]));
++		CG_Text_Paint_Ext(button->rect.x + 28, y + 11, 0.19f, 0.19f, clrTxtBck, CG_TranslateString(award < NUM_ORIGINAL_ENDGAME_AWARDS ? awardNames[award] : etlabAwards[award - NUM_ORIGINAL_ENDGAME_AWARDS].title), 0, 0, 0, &cgs.media.limboFont2);
++		CG_Text_Paint_Ext(button->rect.x + 28 + 180, y + 11, 0.19f, 0.19f, clrTxtBck, va("^7%s", cgs.dbAwardNames[award]), 0, 0, 0, &cgs.media.limboFont2);
+ 		y += 16;
+ 
+ 		++j;
 diff --git a/src/cgame/cg_draw.c b/src/cgame/cg_draw.c
 index c8c5b25..f78405c 100644
 --- a/src/cgame/cg_draw.c
@@ -166,10 +236,33 @@ index 55a8fda..facb692 100644
  				break;
  			}
 diff --git a/src/cgame/cg_local.h b/src/cgame/cg_local.h
-index c71728b..9cd81d2 100644
+index c71728b..6cb3576 100644
 --- a/src/cgame/cg_local.h
 +++ b/src/cgame/cg_local.h
-@@ -2804,6 +2804,10 @@ typedef struct cgs_s
+@@ -2367,10 +2367,11 @@ typedef struct
+ } clientLocation_t;
+ 
+ #if defined(FEATURE_RATING)
+-#define NUM_ENDGAME_AWARDS     22   ///< total number of endgame awards
++#define NUM_ORIGINAL_ENDGAME_AWARDS 22   ///< number of original endgame awards
+ #else
+-#define NUM_ENDGAME_AWARDS     21   ///< total number of endgame awards
++#define NUM_ORIGINAL_ENDGAME_AWARDS 21   ///< number of original endgame awards
+ #endif
++#define NUM_ENDGAME_AWARDS     (NUM_ORIGINAL_ENDGAME_AWARDS + ETLAB_AWARD_COUNT)   ///< total number of endgame awards, ETLab Christmas awards appended
+ #define NUMSHOW_ENDGAME_AWARDS 14   ///< number of awards to display that will fit on screen
+ 
+ #ifdef FEATURE_EDV
+@@ -2714,7 +2715,7 @@ typedef struct cgs_s
+ 	qboolean dbAwardsParsed;
+ 	char *dbAwardNames[NUM_ENDGAME_AWARDS];
+ 	team_t dbAwardTeams[NUM_ENDGAME_AWARDS];
+-	char dbAwardNamesBuffer[1024];
++	char dbAwardNamesBuffer[2048];        ///< ETLab: room for the appended Christmas awards
+ 	int dbAwardsListOffset;
+ 	int dbLastRequestTime;
+ 	int dbPlayerListOffset;
+@@ -2804,6 +2805,10 @@ typedef struct cgs_s
  
  	int scoresCount;
  	char scores[MAX_SCORES_CMDS][MAX_STRING_CHARS];
@@ -180,7 +273,7 @@ index c71728b..9cd81d2 100644
  } cgs_t;
  
  //==============================================================================
-@@ -3408,6 +3412,12 @@ void CG_ShaderStateChanged(void);
+@@ -3408,6 +3413,12 @@ void CG_ShaderStateChanged(void);
  void CG_ChargeTimesChanged(void);
  void CG_TeamRestrictionsChanged(void);
  void CG_SkillLevelsChanged(void);
@@ -389,10 +482,10 @@ index 9902fc3..84c00f9 100644
  		}
 diff --git a/src/game/bg_etlab.c b/src/game/bg_etlab.c
 new file mode 100644
-index 0000000..dab682e
+index 0000000..64bd921
 --- /dev/null
 +++ b/src/game/bg_etlab.c
-@@ -0,0 +1,132 @@
+@@ -0,0 +1,145 @@
 +/*
 + * Wolfenstein: Enemy Territory GPL Source Code
 + * Copyright (C) 1999-2010 id Software LLC, a ZeniMax Media company.
@@ -417,7 +510,7 @@ index 0000000..dab682e
 + */
 +/**
 + * @file bg_etlab.c
-+ * @brief ETLab round modifiers: shared table and pool parsing for game and cgame.
++ * @brief ETLab round modifiers and Christmas awards: shared tables and pool parsing for game and cgame.
 + */
 +
 +#include "../qcommon/q_shared.h"
@@ -525,6 +618,19 @@ index 0000000..dab682e
 +	}
 +	return count;
 +}
++
++const etlabAwardInfo_t etlabAwards[ETLAB_AWARD_COUNT] =
++{
++	{ "Christmas Angel",        "most revives"                           },
++	{ "Santa's Little Helper",  "most dynamite and landmines defused"    },
++	{ "Star of Bethlehem",      "most landmines spotted"                 },
++	{ "Krampus",                "most team kills"                        },
++	{ "New Year's Firecracker", "most hidden mines blown up by grenade"  },
++	{ "Nutcracker",             "most headshots"                         },
++	{ "Silent Night",           "most knife kills"                       },
++	{ "Workshop Elf",           "most constructions and repairs"         },
++	{ "Secret Santa",           "most packs handed to teammates"         },
++};
 diff --git a/src/game/bg_pmove.c b/src/game/bg_pmove.c
 index d4164bc..cda79ca 100644
 --- a/src/game/bg_pmove.c
@@ -544,7 +650,7 @@ index d4164bc..cda79ca 100644
  
  #ifdef CGAMEDLL
 diff --git a/src/game/bg_public.h b/src/game/bg_public.h
-index ebdba6d..d48ee7b 100644
+index ebdba6d..045664e 100644
 --- a/src/game/bg_public.h
 +++ b/src/game/bg_public.h
 @@ -420,6 +420,7 @@ extern const int aReinfSeeds[MAX_REINFSEEDS];
@@ -555,7 +661,7 @@ index ebdba6d..d48ee7b 100644
  
  #define CS_MODELS                       64
  #define CS_SOUNDS                       (CS_MODELS +               MAX_MODELS)              ///< 320 (256)
-@@ -2659,6 +2660,52 @@ bg_playerclass_t *BG_GetPlayerClassInfo(int team, int cls);
+@@ -2659,6 +2660,75 @@ bg_playerclass_t *BG_GetPlayerClassInfo(int team, int cls);
  bg_playerclass_t *BG_PlayerClassForPlayerState(playerState_t *ps);
  qboolean BG_ClassHasWeapon(bg_playerclass_t *classInfo, weapon_t weap);
  qboolean BG_WeaponIsPrimaryForClassAndTeam(int classnum, team_t team, weapon_t weapon);
@@ -605,6 +711,29 @@ index ebdba6d..d48ee7b 100644
 +int BG_ETLabModifierByName(const char *name);
 +qboolean BG_ETLabModifierInPool(const char *pool, int index);
 +int BG_ETLabModifierPoolList(const char *pool, int *indexes);
++
++// ETLab Christmas awards (bg_etlab.c): appended to CS_ENDGAME_STATS after the original awards.
++typedef enum
++{
++	ETLAB_AWARD_ANGEL = 0,     ///< revives
++	ETLAB_AWARD_HELPER,        ///< enemy dynamite and landmines defused
++	ETLAB_AWARD_STAR,          ///< enemy landmines spotted
++	ETLAB_AWARD_KRAMPUS,       ///< team kills
++	ETLAB_AWARD_FIRECRACKER,   ///< hidden enemy landmines blown up with hand grenades
++	ETLAB_AWARD_NUTCRACKER,    ///< headshots
++	ETLAB_AWARD_SILENTNIGHT,   ///< knife kills
++	ETLAB_AWARD_WORKSHOPELF,   ///< constructions completed and MG 42s repaired
++	ETLAB_AWARD_SECRETSANTA,   ///< health and ammo packs taken by teammates
++	ETLAB_AWARD_COUNT
++} etlabAward_t;
++
++typedef struct
++{
++	const char *title;
++	const char *description;
++} etlabAwardInfo_t;
++
++extern const etlabAwardInfo_t etlabAwards[ETLAB_AWARD_COUNT];
  weapon_t BG_GetBestSecondaryWeapon(int classNum, team_t team, weapon_t primaryWeapon, int *skills);
  int BG_ClassWeaponCount(bg_playerclass_t *classInfo, team_t team);
  const char *BG_ShortClassnameForNumber(int classNum);
@@ -793,7 +922,7 @@ index 31f829b..f676131 100644
  	{
  		return;
 diff --git a/src/game/g_combat.c b/src/game/g_combat.c
-index 576d8fa..fcedd3f 100644
+index 576d8fa..1a725c8 100644
 --- a/src/game/g_combat.c
 +++ b/src/game/g_combat.c
 @@ -503,6 +503,9 @@ void player_die(gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int
@@ -828,7 +957,20 @@ index 576d8fa..fcedd3f 100644
  				{
  					mapEntityData_t *mEnt;
  
-@@ -1696,7 +1702,7 @@ void G_DamageExt(gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, vec
+@@ -1567,6 +1573,12 @@ void G_DamageExt(gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, vec
+ 						G_FreeMapEntityData(&mapEntityData[1], mEnt);
+ 					}
+ 
++					// ETLab New Year's Firecracker: hidden enemy mine blown up by a hand grenade
++					if (!G_LandmineSpotted(targ) && attacker && attacker->client && targ->s.teamNum != attacker->client->sess.sessionTeam)
++					{
++						G_ETLabAwardCount(attacker, ETLAB_STAT_GRENADE_MINES);
++					}
++
+ 					G_ExplodeMissile(targ);
+ 				}
+ 			}
+@@ -1696,7 +1708,7 @@ void G_DamageExt(gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, vec
  		}
  	}
  
@@ -837,7 +979,7 @@ index 576d8fa..fcedd3f 100644
  	{
  		// FIXME: also when damage is 0 ?
  		// head shots, all weapons, do minimum 50 points damage
-@@ -1792,6 +1798,12 @@ void G_DamageExt(gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, vec
+@@ -1792,6 +1804,12 @@ void G_DamageExt(gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, vec
  		}
  	}
  
@@ -850,7 +992,7 @@ index 576d8fa..fcedd3f 100644
  	if (g_antilag.integer)
  	{
  		// re-adjust now because we are changing eFlags and pm_flags
-@@ -1805,6 +1817,10 @@ void G_DamageExt(gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, vec
+@@ -1805,6 +1823,10 @@ void G_DamageExt(gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, vec
  		vec3_t kvel;
  		float  mass = 200;
  
@@ -862,10 +1004,10 @@ index 576d8fa..fcedd3f 100644
  		VectorAdd(targ->client->ps.velocity, kvel, targ->client->ps.velocity);
  
 diff --git a/src/game/g_cvars.c b/src/game/g_cvars.c
-index eb66d25..a2bb60b 100644
+index eb66d25..35cfe76 100644
 --- a/src/game/g_cvars.c
 +++ b/src/game/g_cvars.c
-@@ -269,6 +269,12 @@ vmCvar_t team_maxMachineguns;
+@@ -269,6 +269,13 @@ vmCvar_t team_maxMachineguns;
  vmCvar_t team_maxRockets;
  vmCvar_t team_maxRiflegrenades;
  vmCvar_t team_maxLandmines;
@@ -875,10 +1017,11 @@ index eb66d25..a2bb60b 100644
 +vmCvar_t g_etlabModifierMode;
 +vmCvar_t g_etlabModifierMinutes;
 +vmCvar_t etlab_modifier;
++vmCvar_t g_etlabAwards;
  // misc
  vmCvar_t team_riflegrenades;
  // skills
-@@ -616,6 +622,12 @@ cvarTable_t gameCvarTable[] =
+@@ -616,6 +623,14 @@ cvarTable_t gameCvarTable[] =
  	{ &team_maxRockets,                   "team_maxRockets",                   "-1",                         0,                                               0, qfalse, qfalse },
  	{ &team_maxRiflegrenades,             "team_maxRiflegrenades",             "-1",                         0,                                               0, qfalse, qfalse },
  	{ &team_maxLandmines,                 "team_maxLandmines",                 "10",                         0,                                               0, qfalse, qfalse },
@@ -888,14 +1031,16 @@ index eb66d25..a2bb60b 100644
 +	{ &g_etlabModifierMode,               "g_etlabModifierMode",               "0",                          0,                                               0, qfalse, qfalse },
 +	{ &g_etlabModifierMinutes,            "g_etlabModifierMinutes",            "5",                          0,                                               0, qfalse, qfalse },
 +	{ &etlab_modifier,                    "etlab_modifier",                    "",                           0,                                               0, qfalse, qfalse },
++	// ETLab Christmas awards
++	{ &g_etlabAwards,                     "g_etlabAwards",                     "0",                          0,                                               0, qfalse, qfalse },
  	//misc
  	{ &team_riflegrenades,                "team_riflegrenades",                "1",                          0,                                               0, qfalse, qfalse },
  	//skills
 diff --git a/src/game/g_cvars.h b/src/game/g_cvars.h
-index a4b0bee..e445b3a 100644
+index a4b0bee..2fe7988 100644
 --- a/src/game/g_cvars.h
 +++ b/src/game/g_cvars.h
-@@ -258,6 +258,12 @@ extern vmCvar_t team_maxMachineguns;
+@@ -258,6 +258,14 @@ extern vmCvar_t team_maxMachineguns;
  extern vmCvar_t team_maxRockets;
  extern vmCvar_t team_maxRiflegrenades;
  extern vmCvar_t team_maxLandmines;
@@ -905,15 +1050,17 @@ index a4b0bee..e445b3a 100644
 +extern vmCvar_t g_etlabModifierMode;
 +extern vmCvar_t g_etlabModifierMinutes;
 +extern vmCvar_t etlab_modifier;
++// ETLab Christmas awards
++extern vmCvar_t g_etlabAwards;
  // misc
  extern vmCvar_t team_riflegrenades;
  // skills
 diff --git a/src/game/g_etlab.c b/src/game/g_etlab.c
 new file mode 100644
-index 0000000..e1b0076
+index 0000000..244f681
 --- /dev/null
 +++ b/src/game/g_etlab.c
-@@ -0,0 +1,460 @@
+@@ -0,0 +1,574 @@
 +/*
 + * Wolfenstein: Enemy Territory GPL Source Code
 + * Copyright (C) 1999-2010 id Software LLC, a ZeniMax Media company.
@@ -938,11 +1085,12 @@ index 0000000..e1b0076
 + */
 +/**
 + * @file g_etlab.c
-+ * @brief ETLab round modifiers: selection, lifetime and server-side rule hooks.
++ * @brief ETLab round modifiers (selection, lifetime and server-side rule hooks) and Christmas awards.
 + *
 + * g_etlabModifierPool lists the modifiers that may be chosen ("all" or names).
 + * g_etlabModifierMode: 0 off, 1 random per map, 2 vote only, 3 random with vote override.
 + * Short-lived ("gaudi") modifiers end g_etlabModifierMinutes after the match starts.
++ * g_etlabAwards 1 adds the Christmas awards to the debriefing and announces them in chat.
 + */
 +
 +#include "g_local.h"
@@ -1374,11 +1522,171 @@ index 0000000..e1b0076
 +
 +	return G_OK;
 +}
++
++const char *etlabStatNames[ETLAB_STAT_COUNT] =
++{
++	"etlab_revives",
++	"etlab_defuses",
++	"etlab_mines_spotted",
++	"etlab_grenade_mines",
++	"etlab_constructions",
++	"etlab_packs",
++};
++
++/**
++ * @brief Counts a Christmas award event; like the original stats only while the match is running.
++ */
++void G_ETLabAwardCount(gentity_t *ent, etlabStat_t stat)
++{
++	if (g_gamestate.integer != GS_PLAYING || !ent || !ent->client)
++	{
++		return;
++	}
++	ent->client->sess.etlabStats[stat]++;
++}
++
++/**
++ * @brief Award score of a player; team kills, headshots and knife kills come from the original stats.
++ */
++int G_ETLabAwardValue(gclient_t *cl, int award)
++{
++	int i, value = 0;
++
++	switch (award)
++	{
++	case ETLAB_AWARD_ANGEL:
++		return cl->sess.etlabStats[ETLAB_STAT_REVIVES];
++	case ETLAB_AWARD_HELPER:
++		return cl->sess.etlabStats[ETLAB_STAT_DEFUSES];
++	case ETLAB_AWARD_STAR:
++		return cl->sess.etlabStats[ETLAB_STAT_MINES_SPOTTED];
++	case ETLAB_AWARD_KRAMPUS:
++		return cl->sess.team_kills;
++	case ETLAB_AWARD_FIRECRACKER:
++		return cl->sess.etlabStats[ETLAB_STAT_GRENADE_MINES];
++	case ETLAB_AWARD_NUTCRACKER:
++		for (i = 0; i < WS_MAX; i++)
++		{
++			value += cl->sess.aWeaponStats[i].headshots;
++		}
++		return value;
++	case ETLAB_AWARD_SILENTNIGHT:
++		return cl->sess.aWeaponStats[WS_KNIFE].kills + cl->sess.aWeaponStats[WS_KNIFE_KBAR].kills;
++	case ETLAB_AWARD_WORKSHOPELF:
++		return cl->sess.etlabStats[ETLAB_STAT_CONSTRUCTIONS];
++	case ETLAB_AWARD_SECRETSANTA:
++		return cl->sess.etlabStats[ETLAB_STAT_PACKS];
++	default:
++		return 0;
++	}
++}
++
++/**
++ * @brief Appends "clientNum value team" per Christmas award to the endgame configstring and announces the winners.
++ * Only Axis/Allies players with at least one point qualify. Ties go to the higher-ranked player;
++ * Krampus breaks ties by team damage like the original team kill award.
++ */
++void G_ETLabBuildAwards(char *buffer, int size)
++{
++	qboolean header = qfalse;
++	int      award, i;
++
++	if (!g_etlabAwards.integer)
++	{
++		return;
++	}
++
++	for (award = 0; award < ETLAB_AWARD_COUNT; award++)
++	{
++		gclient_t *best         = NULL;
++		int       bestClientNum = -1, bestValue = 0;
++
++		for (i = 0; i < level.numConnectedClients; i++)
++		{
++			gclient_t *cl = &level.clients[level.sortedClients[i]];
++			int       value;
++
++			if (cl->sess.sessionTeam != TEAM_AXIS && cl->sess.sessionTeam != TEAM_ALLIES)
++			{
++				continue;
++			}
++
++			value = G_ETLabAwardValue(cl, award);
++			if (value > bestValue || (best && value == bestValue && award == ETLAB_AWARD_KRAMPUS && cl->sess.team_damage_given > best->sess.team_damage_given))
++			{
++				best          = cl;
++				bestClientNum = level.sortedClients[i];
++				bestValue     = value;
++			}
++		}
++
++		if (!best)
++		{
++			Q_strcat(buffer, size, "-1 0 0 ");
++			continue;
++		}
++
++		Q_strcat(buffer, size, va("%i %i %i ", bestClientNum, bestValue, best->sess.sessionTeam));
++		if (!header)
++		{
++			trap_SendServerCommand(-1, "chat \"^3*** Christmas Awards ***\"");
++			header = qtrue;
++		}
++		trap_SendServerCommand(-1, va("chat \"^3%s^7 (%s): %s^7 - %i\"", etlabAwards[award].title, etlabAwards[award].description, best->pers.netname, bestValue));
++	}
++}
+diff --git a/src/game/g_items.c b/src/game/g_items.c
+index 117fe9d..3773085 100644
+--- a/src/game/g_items.c
++++ b/src/game/g_items.c
+@@ -459,6 +459,7 @@ int Pickup_Weapon(gentity_t *ent, gentity_t *other)
+ 			if (ent->parent && ent->parent->client && other->client->sess.sessionTeam == ent->parent->client->sess.sessionTeam)
+ 			{
+ 				G_AddSkillPoints(ent->parent, SK_SIGNALS, 1.f, "resupply");
++				G_ETLabAwardCount(ent->parent, ETLAB_STAT_PACKS);
+ 				G_LogPrintf("Ammo_Pack: %d %d\n", (int)(ent->parent - g_entities), (int)(other - g_entities));
+ 
+ #ifdef FEATURE_OMNIBOT
+@@ -594,6 +595,7 @@ int Pickup_Health(gentity_t *ent, gentity_t *other)
+ 	if (ent->parent && ent->parent->client && ent->parent->client != other->client && other->client->sess.sessionTeam == ent->parent->client->sess.sessionTeam)
+ 	{
+ 		G_AddSkillPoints(ent->parent, SK_FIRST_AID, 1.f, "healing");
++		G_ETLabAwardCount(ent->parent, ETLAB_STAT_PACKS);
+ 		G_LogPrintf("Health_Pack: %d %d\n", (int)(ent->parent - g_entities), (int)(other - g_entities));
+ 	}
+ 
 diff --git a/src/game/g_local.h b/src/game/g_local.h
-index 83781ff..7b9c93c 100644
+index 83781ff..bbc69d0 100644
 --- a/src/game/g_local.h
 +++ b/src/game/g_local.h
-@@ -856,6 +856,7 @@ typedef struct
+@@ -622,6 +622,18 @@ typedef struct
+ 	unsigned int kills;
+ } weapon_stat_t;
+ 
++// ETLab Christmas award counters without an original session statistic
++typedef enum
++{
++	ETLAB_STAT_REVIVES = 0,
++	ETLAB_STAT_DEFUSES,
++	ETLAB_STAT_MINES_SPOTTED,
++	ETLAB_STAT_GRENADE_MINES,
++	ETLAB_STAT_CONSTRUCTIONS,
++	ETLAB_STAT_PACKS,
++	ETLAB_STAT_COUNT
++} etlabStat_t;
++
+ /**
+  * @struct playerTeamStateState_t
+  * @brief Client data that stays across multiple levels or tournament restarts
+@@ -674,6 +686,7 @@ typedef struct
+ 	int time_axis;
+ 	int time_allies;
+ 	int time_played;
++	int etlabStats[ETLAB_STAT_COUNT];                   ///< ETLab Christmas award counters, reset with the other stats
+ #ifdef FEATURE_RATING
+ 	// skill rating
+ 	float mu;
+@@ -856,6 +869,7 @@ typedef struct
  	int savedClassWeaponTimeCvop;
  	int savedClassWeaponTime;
  
@@ -1386,7 +1694,7 @@ index 83781ff..7b9c93c 100644
  } clientPersistant_t;
  
  /**
-@@ -1413,6 +1414,12 @@ typedef struct level_locals_s
+@@ -1413,6 +1427,12 @@ typedef struct level_locals_s
  
  	uint64_t shoutcasters;     ///< shoutcasters, bitmask
  	int ebs_shoutcast[2];      ///< ebs shoutcast entities numbers
@@ -1399,7 +1707,7 @@ index 83781ff..7b9c93c 100644
  } level_locals_t;
  
  /**
-@@ -1718,6 +1725,26 @@ void aagun_stopusing(gentity_t *self);
+@@ -1718,6 +1738,32 @@ void aagun_stopusing(gentity_t *self);
  float AngleDifference(float ang1, float ang2);
  qboolean G_FlingClient(gentity_t *vic, int flingType);
  
@@ -1421,6 +1729,12 @@ index 83781ff..7b9c93c 100644
 +qboolean G_ETLabRotateClass(gclient_t *client);
 +void G_ETLabModifierOnKill(gentity_t *victim, gentity_t *attacker);
 +int G_ETLabModifier_v(gentity_t *ent, unsigned int dwVoteIndex, char *arg, char *arg2, qboolean fRefereeCmd);
++
++// g_etlab.c: Christmas awards
++extern const char *etlabStatNames[ETLAB_STAT_COUNT];
++void G_ETLabAwardCount(gentity_t *ent, etlabStat_t stat);
++int G_ETLabAwardValue(gclient_t *cl, int award);
++void G_ETLabBuildAwards(char *buffer, int size);
 +void G_RevealLandmine(gentity_t *mine);
 +
  void G_PreFilledMissileEntity(gentity_t *ent, int weaponNum, int realWeapon, int ownerNum, team_t teamNum, int clientNum, gentity_t *parent, const vec3_t start, const vec3_t dir);
@@ -1479,6 +1793,18 @@ index d4334cf..2d4e04c 100644
  	}
  #ifdef FEATURE_LUA
  	G_LuaHook_RunFrame(levelTime);
+diff --git a/src/game/g_match.c b/src/game/g_match.c
+index 838d300..faef91d 100644
+--- a/src/game/g_match.c
++++ b/src/game/g_match.c
+@@ -661,6 +661,7 @@ void G_deleteStats(int nClient)
+ 	cl->sess.time_axis            = 0;
+ 	cl->sess.time_allies          = 0;
+ 	cl->sess.time_played          = 0;
++	Com_Memset(cl->sess.etlabStats, 0, sizeof(cl->sess.etlabStats));
+ 
+ #ifdef FEATURE_RATING
+ 	// skill rating
 diff --git a/src/game/g_missile.c b/src/game/g_missile.c
 index 1166f38..f043188 100644
 --- a/src/game/g_missile.c
@@ -1507,8 +1833,42 @@ index db6e5a6..1ea3826 100644
  	level.gameManager->s.modelindex      = qfalse; // axis HQ doesn't exist
  	level.gameManager->s.modelindex2     = qfalse; // allied HQ doesn't exist
  
+diff --git a/src/game/g_session.c b/src/game/g_session.c
+index d8a1f56..f2e3220 100644
+--- a/src/game/g_session.c
++++ b/src/game/g_session.c
+@@ -52,6 +52,7 @@ void G_WriteClientSessionData(gclient_t *client, qboolean restart)
+ {
+ 	cJSON *root, *campaign, *restartObj = NULL;
+ 	char  fileName[MAX_QPATH] = { 0 };
++	int   i;
+ 
+ 	Com_sprintf(fileName, sizeof(fileName), "session/client%02i.json", (int)(client - level.clients));
+ 	Com_Printf("Writing session file %s\n", fileName);
+@@ -110,6 +111,10 @@ void G_WriteClientSessionData(gclient_t *client, qboolean restart)
+ 	cJSON_AddNumberToObject(root, "time_axis", client->sess.time_axis);
+ 	cJSON_AddNumberToObject(root, "time_allies", client->sess.time_allies);
+ 	cJSON_AddNumberToObject(root, "time_played", client->sess.time_played);
++	for (i = 0; i < ETLAB_STAT_COUNT; i++)
++	{
++		cJSON_AddNumberToObject(root, etlabStatNames[i], client->sess.etlabStats[i]);
++	}
+ 
+ #ifdef FEATURE_RATING
+ 	{
+@@ -401,6 +406,10 @@ qboolean G_ReadSessionData(gclient_t *client)
+ 		client->sess.time_axis    = Q_ReadIntValueJson(root, "time_axis");
+ 		client->sess.time_allies  = Q_ReadIntValueJson(root, "time_allies");
+ 		client->sess.time_played  = Q_ReadIntValueJson(root, "time_played");
++		for (i = 0; i < ETLAB_STAT_COUNT; i++)
++		{
++			client->sess.etlabStats[i] = Q_ReadIntValueJson(root, etlabStatNames[i]);
++		}
+ 	}
+ 
+ #ifdef FEATURE_RATING
 diff --git a/src/game/g_stats.c b/src/game/g_stats.c
-index 0418bf6..5816497 100644
+index 0418bf6..8c0dd62 100644
 --- a/src/game/g_stats.c
 +++ b/src/game/g_stats.c
 @@ -426,6 +426,12 @@ void G_AddSkillPoints(gentity_t *ent, skillType_t skill, float points, const cha
@@ -1524,8 +1884,17 @@ index 0418bf6..5816497 100644
  	level.teamXP[skill][ent->client->sess.sessionTeam - TEAM_AXIS] += points;
  
  	ent->client->sess.skillpoints[skill] += points;
+@@ -1405,5 +1411,8 @@ void G_BuildEndgameStats(void)
+ 	}
+ 	Q_strcat(buffer, 1024, va("%i %i %i ", best ? bestClientNum : -1, best ? (int)(best->ps.persistant[PERS_SCORE] - best->sess.startxptotal) : 0, best ? best->sess.sessionTeam : TEAM_FREE));
+ 
++	// ETLab Christmas awards are appended after the original ones
++	G_ETLabBuildAwards(buffer, sizeof(buffer));
++
+ 	trap_SetConfigstring(CS_ENDGAME_STATS, buffer);
+ }
 diff --git a/src/game/g_teammapdata.c b/src/game/g_teammapdata.c
-index b7e7e2b..182c88a 100644
+index b7e7e2b..a74ed7e 100644
 --- a/src/game/g_teammapdata.c
 +++ b/src/game/g_teammapdata.c
 @@ -1170,7 +1170,7 @@ void G_CheckSpottedLandMines(void)
@@ -1566,6 +1935,14 @@ index b7e7e2b..182c88a 100644
  
  										G_PopupMessageForMines(ent);
  
+@@ -1233,6 +1219,7 @@ void G_CheckSpottedLandMines(void)
+ 
+ 
+ 										G_AddSkillPoints(ent, SK_MILITARY_INTELLIGENCE_AND_SCOPED_WEAPONS, 3.f, "landmine spotted");
++										G_ETLabAwardCount(ent, ETLAB_STAT_MINES_SPOTTED);
+ 									}
+ 								}
+ 								break;
 diff --git a/src/game/g_vote.c b/src/game/g_vote.c
 index 7a9636f..a0497ca 100644
 --- a/src/game/g_vote.c
@@ -1579,10 +1956,42 @@ index 7a9636f..a0497ca 100644
  };
  
 diff --git a/src/game/g_weapon.c b/src/game/g_weapon.c
-index b5d39ff..d0d22c1 100644
+index b5d39ff..ae22de0 100644
 --- a/src/game/g_weapon.c
 +++ b/src/game/g_weapon.c
-@@ -1805,7 +1805,7 @@ void G_ArmLandmine(gentity_t *traceEnt, gentity_t *ent)
+@@ -591,6 +591,7 @@ gentity_t *Weapon_Syringe(gentity_t *ent)
+ 		if (!traceEnt->isProp) // flag for if they were teamkilled or not
+ 		{
+ 			G_AddSkillPoints(ent, SK_FIRST_AID, 4.f, "revive");
++			G_ETLabAwardCount(ent, ETLAB_STAT_REVIVES);
+ 		}
+ 
+ 		// calculate ranks to update numFinalDead arrays. Have to do it manually as addscore has an early out
+@@ -1225,6 +1226,7 @@ static qboolean TryConstructing(gentity_t *ent, gentity_t *trigger)
+ 			// call script
+ 			G_Script_ScriptEvent(constructible, "built", "final");
+ 			G_LogPrintf("Repair: %d\n", (int)(ent - g_entities));
++			G_ETLabAwardCount(ent, ETLAB_STAT_CONSTRUCTIONS);
+ 		}
+ 		else
+ 		{
+@@ -1232,6 +1234,7 @@ static qboolean TryConstructing(gentity_t *ent, gentity_t *trigger)
+ 			{
+ 				G_Script_ScriptEvent(constructible, "built", "final");
+ 				G_LogPrintf("Repair: %d\n", (int)(ent - g_entities));
++				G_ETLabAwardCount(ent, ETLAB_STAT_CONSTRUCTIONS);
+ 			}
+ 			else
+ 			{
+@@ -1742,6 +1745,7 @@ void G_RepairEmplacedGun(gentity_t *traceEnt, gentity_t *ent)
+ 	}
+ 
+ 	G_LogPrintf("Repair: %d\n", (int)(ent - g_entities));
++	G_ETLabAwardCount(ent, ETLAB_STAT_CONSTRUCTIONS);
+ 
+ 	if (traceEnt->sound3to2 != ent->client->sess.sessionTeam)
+ 	{
+@@ -1805,7 +1809,7 @@ void G_ArmLandmine(gentity_t *traceEnt, gentity_t *ent)
  	}
  
  	// the team reach the maximum landmines to be armed, abord planting and free the landmine
@@ -1591,7 +2000,7 @@ index b5d39ff..d0d22c1 100644
  	{
  		trap_SendServerCommand(ent - g_entities, "cp \"Your team has too many landmines placed\" 1");
  		G_RecoverLandmine(traceEnt, ent);
-@@ -1845,6 +1845,7 @@ void G_ArmLandmine(gentity_t *traceEnt, gentity_t *ent)
+@@ -1845,6 +1849,7 @@ void G_ArmLandmine(gentity_t *traceEnt, gentity_t *ent)
  	traceEnt->timestamp = level.time + 1000;
  	traceEnt->health    = 0;
  
@@ -1599,7 +2008,7 @@ index b5d39ff..d0d22c1 100644
  	traceEnt->s.effect1Time = 1; // armed
  	traceEnt->s.modelindex2 = 0;
  
-@@ -1889,7 +1890,10 @@ void G_DisarmLandmine(gentity_t *traceEnt, gentity_t *ent)
+@@ -1889,11 +1894,15 @@ void G_DisarmLandmine(gentity_t *traceEnt, gentity_t *ent)
  
  		trap_SendServerCommand(ent - g_entities, "cp \"Landmine defused\" 1");
  
@@ -1611,7 +2020,12 @@ index b5d39ff..d0d22c1 100644
  
  		if (traceEnt->s.teamNum != ent->client->sess.sessionTeam)
  		{
-@@ -2229,12 +2233,12 @@ void G_ArmDynamite(gentity_t *traceEnt, gentity_t *ent)
+ 			G_AddSkillPoints(ent, SK_EXPLOSIVES_AND_CONSTRUCTION, 4.f, "defusing landmine");
++			G_ETLabAwardCount(ent, ETLAB_STAT_DEFUSES);
+ 		}
+ 
+ 		// update our map
+@@ -2229,12 +2238,12 @@ void G_ArmDynamite(gentity_t *traceEnt, gentity_t *ent)
  	// dynamite crosshair ID
  	traceEnt->s.otherEntityNum = ent->s.number;
  
@@ -1627,7 +2041,16 @@ index b5d39ff..d0d22c1 100644
  
  	// not planted near objective, nothing to do more
  	if (hit)
-@@ -2415,6 +2419,17 @@ void G_DisarmDynamite(gentity_t *traceEnt, gentity_t *ent)
+@@ -2300,6 +2309,8 @@ void G_DisarmDynamite(gentity_t *traceEnt, gentity_t *ent)
+ 		return;
+ 	}
+ 
++	G_ETLabAwardCount(ent, ETLAB_STAT_DEFUSES);
++
+ 	VectorCopy(traceEnt->r.currentOrigin, org);
+ 	SnapVector(org);
+ 	VectorAdd(org, GetWeaponFireTableData(traceEnt->s.weapon)->hitBox[0], mins);
+@@ -2415,6 +2426,17 @@ void G_DisarmDynamite(gentity_t *traceEnt, gentity_t *ent)
   * @brief Weapon_Engineer
   * @param[in,out] ent
   */
@@ -1645,7 +2068,7 @@ index b5d39ff..d0d22c1 100644
  gentity_t *Weapon_Engineer(gentity_t *ent)
  {
  	trace_t   tr;
-@@ -2433,6 +2448,31 @@ gentity_t *Weapon_Engineer(gentity_t *ent)
+@@ -2433,6 +2455,31 @@ gentity_t *Weapon_Engineer(gentity_t *ent)
  
  	VectorMA(muzzleTrace, CH_MAX_DIST, forward, end);
  
@@ -1677,7 +2100,7 @@ index b5d39ff..d0d22c1 100644
  	// First, we try the specific case where emplaced can be repaired.
  	// But since the TOI is a different ent from the emplaced gun
  	// it may block the repair process, so we ignore it.
-@@ -2491,6 +2531,13 @@ gentity_t *Weapon_Engineer(gentity_t *ent)
+@@ -2491,6 +2538,13 @@ gentity_t *Weapon_Engineer(gentity_t *ent)
  		vec3_t  base;
  		vec3_t  tr_down = { 0, 0, 16 };
  
@@ -1691,7 +2114,7 @@ index b5d39ff..d0d22c1 100644
  		VectorSubtract(traceEnt->s.pos.trBase, tr_down, base);
  
  		trap_EngineerTrace(ent, &tr2, traceEnt->s.pos.trBase, NULL, NULL, base, traceEnt->s.number, MASK_SHOT);
-@@ -2503,14 +2550,7 @@ gentity_t *Weapon_Engineer(gentity_t *ent)
+@@ -2503,14 +2557,7 @@ gentity_t *Weapon_Engineer(gentity_t *ent)
  			return NULL;
  		}
  
@@ -1707,7 +2130,7 @@ index b5d39ff..d0d22c1 100644
  	}
  	else if (traceEnt->methodOfDeath == MOD_SATCHEL)
  	{
-@@ -4391,3 +4431,129 @@ void FireWeapon(gentity_t *ent)
+@@ -4391,3 +4438,129 @@ void FireWeapon(gentity_t *ent)
  
  	ent->client->sess.aWeaponStats[GetWeaponTableData(ent->s.weapon)->indexWeaponStat].atts++;
  }

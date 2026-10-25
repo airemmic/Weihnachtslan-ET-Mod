@@ -23,6 +23,25 @@ Zweck: Sollverhalten bei Änderungen und Tests erhalten. Regeln gelten für beid
 - **Gaudi-Modi, zeitlich begrenzt ab Matchstart:** `lowgravity` halbe Schwerkraft; `sidearms` keine Primärwaffen und Handgranaten, Klassenwerkzeuge inklusive Dynamit und Minen bleiben; `iceskating` Laufgeschwindigkeit ×1,4, Rückstoß verdoppelt; `grenaderain` Handgranaten alle 20 Sekunden aufgefüllt; `headshots` Spieler verletzen Spieler nur per Kopfschuss, Rückstoß bleibt; `vampire` jeder Gegner-Kill heilt 20 Lebenspunkte bis zum Maximum.
 - **Invarianten:** Ohne aktiven Modus entsprechen alle Werte dem bisherigen Verhalten. Ladezeiten werden samt Konfigstring neu gesetzt; Map-Script-Faktoren bleiben multiplikativ erhalten. Nicht-scharfe Werte wie das Minenlimit `-1` bleiben unverändert.
 
+## Rundenauszeichnungen
+
+- **Konfiguration:** `g_etlabAwards 1` aktiviert die weihnachtlichen Auszeichnungen. Standard `0` entspricht dem bisherigen Rundenende ohne zusätzliche Einträge und Chat-Zeilen.
+- **Anzeige:** Am Rundenende in der Awards-Liste des Debriefings vor den Original-Auszeichnungen und als Chat-Ansage: Kopfzeile, danach je vergebener Auszeichnung Titel, Kriterium, Spieler und Wert. Titel sind englisch.
+- **Vergabe:** Nur Spieler in Axis oder Allies mit mindestens einem Punkt. Gleichstand geht an den höher platzierten Spieler; Krampus entscheidet Gleichstand wie das Original über Team-Schaden. Gezählt wird nur während der laufenden Runde; die Zähler leben und werden zurückgesetzt wie die Original-Sessionstatistik.
+- **Invarianten:** Original-Auszeichnungen, deren Bedingungen und Reihenfolge in `CS_ENDGAME_STATS` bleiben unverändert; die neuen Werte werden angehängt. Der Original-Award „I Ain't Got No Friends“ bleibt mit seiner Schwelle von fünf Teamkills bestehen.
+
+| Titel | Kriterium |
+|---|---|
+| Christmas Angel | Wiederbelebungen; wie beim Revive-XP ohne zuvor im Team getötete Spieler |
+| Santa's Little Helper | Entschärftes gegnerisches Dynamit und gegnerische Landminen, alle Klassen |
+| Star of Bethlehem | Per Fernglas entdeckte gegnerische Landminen |
+| Krampus | Teamkills, ab einem |
+| New Year's Firecracker | Verborgene gegnerische Landminen, durch eigene Handgranate gesprengt |
+| Nutcracker | Kopfschusstreffer aller Waffen |
+| Silent Night | Messer-Kills, beide Messer |
+| Workshop Elf | Fertiggestellte Konstruktionen (Endstufe) und vollständig reparierte MG 42 |
+| Secret Santa | Von Teamkameraden aufgenommene Health- und Ammo-Packs |
+
 ## Übungsfeld-Invarianten
 
 - `g_etlabPractice 1` ist opt-in. Zusätzlich müssen lokaler Host, Listenserver und Map `oasis` zutreffen. Auf Dedicated Servern keine Übungsobjekte erzeugen.
@@ -42,6 +61,7 @@ Zweck: Sollverhalten bei Änderungen und Tests erhalten. Regeln gelten für beid
 | Fernglas | Standardtaste B halten; normaler Fortschritt, etwa 2,5 Sekunden |
 | Übungsobjekte zurücksetzen | F6 / `etlab_targets` |
 | Rundenmodifikator wählen | `callvote modifier <name>`; Liste per `callvote modifier ?` |
+| Rundenauszeichnungen | Rundenende: Debriefing, Awards-Liste; Chat |
 
 Native Klassen-/Loadout-Prüfungen und echte Interaktionen getrennt testen. Für Entschärfungszeiten Soldier/Engineer bei identischem Skill 0 und 4 vergleichen; Waffenwechsel und Annäherung nicht mitzählen. Dynamit kann nach Defuse verzögert entfernt werden, daher Frame-Toleranz zulassen. Bestehende XP-/Charge-Regeln nicht unbeabsichtigt ändern.
 

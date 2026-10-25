@@ -25,8 +25,9 @@ Beauftragte Erweiterungen des Weihnachts-LAN-Mods, Stand 25.10.2026. Reihenfolge
 ## 2. Rundenauszeichnungen, weihnachtlich
 
 - Ziel: Am Rundenende zusätzliche Auszeichnungen mit weihnachtlichen Titeln, etwa meiste Wiederbelebungen, meiste Entschärfungen, meiste Teamkills, meiste Minen gefunden.
-- Einstieg: vorhandene Statistik in `g_stats.c`/`g_cmds.c`; Anzeige im Rundenende-Panel `cg_debriefing.c`; Vote-Einstieg für Modifikatoren in `g_vote.c`.
-- Offen: Titelliste, Anzeige nur im Chat oder im Endpanel.
+- Entschieden: neun Auszeichnungen mit englischen Titeln; Anzeige im Debriefing-Endpanel und als Chat-Ansage; Cvar `g_etlabAwards`, Standard 0.
+- Umgesetzt: Zähler in der Session-Statistik, Vergabe in `G_BuildEndgameStats` angehängt, Endpanel mit Weihnachts-Awards zuerst, native Tests. Sollverhalten in `spielregeln.md`.
+- Offen: Runtime-Abnahme auf Host mit Original-PK3s (Endpanel, Scrollen, Chat-Zeilen, Revive-/Pack-/Konstruktionszähler im echten Spiel).
 
 ## 3. Nischenwaffen aufwerten
 

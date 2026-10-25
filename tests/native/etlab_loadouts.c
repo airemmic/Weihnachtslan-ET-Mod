@@ -77,6 +77,8 @@ extern void G_ArmLandmine(gentity_t *mine, gentity_t *player);
 static int traceTarget = ENTITYNUM_NONE;
 static char savedModifier[64];
 static qboolean radiusQuery, blocked;
+static char endgameStats[BIG_INFO_STRING], lastChat[MAX_STRING_CHARS];
+static int chatLines;
 
 static intptr_t QDECL TestSyscall(intptr_t arg, ...)
 {
@@ -85,8 +87,23 @@ static intptr_t QDECL TestSyscall(intptr_t arg, ...)
 	va_start(ap, arg);
 	switch (arg)
 	{
-	case G_SEND_SERVER_COMMAND: case G_PRINT: case G_LOCATE_GAME_DATA: case G_SET_CONFIGSTRING: case G_FS_WRITE:
+	case G_PRINT: case G_LOCATE_GAME_DATA: case G_FS_WRITE:
 		break;
+	case G_SEND_SERVER_COMMAND:
+	{
+		const char *text;
+		(void)va_arg(ap, int);
+		text = va_arg(ap, const char *);
+		if (!Q_strncmp(text, "chat ", 5)) { chatLines++; Q_strncpyz(lastChat, text, sizeof(lastChat)); }
+		break;
+	}
+	case G_SET_CONFIGSTRING:
+	{
+		int num = va_arg(ap, int);
+		const char *text = va_arg(ap, const char *);
+		if (num == CS_ENDGAME_STATS) { Q_strncpyz(endgameStats, text, sizeof(endgameStats)); }
+		break;
+	}
 	case G_CVAR_VARIABLE_INTEGER_VALUE: case G_REAL_TIME:
 		break;
 	case G_CVAR_SET:
@@ -555,6 +572,221 @@ static void CheckQuickSpotting(void)
 	}
 }
 
+static int EndgameStatValues(int *values, int max)
+{
+	char *data = endgameStats, *token;
+	int n = 0;
+	while (n < max && *(token = COM_Parse(&data)))
+	{
+		values[n++] = Q_atoi(token);
+	}
+	return n;
+}
+
+static void CheckAwardTriplet(const int *values, int original, int award, int clientNum, int value, int team, const char *message)
+{
+	const int *v = values + (original + award) * 3;
+	Check(v[0] == clientNum && v[1] == value && v[2] == team, message);
+}
+
+static void SetupMine(gentity_t *mine, int team, qboolean spotted)
+{
+	Com_Memset(mine, 0, sizeof(*mine));
+	mine->inuse = qtrue;
+	mine->s.number = MAX_CLIENTS;
+	mine->s.eType = ET_MISSILE;
+	mine->s.weapon = WP_LANDMINE;
+	mine->methodOfDeath = MOD_LANDMINE;
+	mine->s.effect1Time = 1;
+	mine->s.teamNum = team;
+	mine->s.modelindex2 = spotted;
+	mine->takedamage = qtrue;
+	mine->classname = "landmine";
+}
+
+static void CheckAwards(void)
+{
+	gclient_t *axis = &g_clients[0], *allies = &g_clients[1], *spectator = &g_clients[2];
+	gentity_t *player = &g_entities[0], *target = &g_entities[MAX_CLIENTS];
+	int values[256], original, i;
+#ifdef FEATURE_RATING
+	original = 22;
+#else
+	original = 21;
+#endif
+
+	// Shared table and session keys
+	Check(ETLAB_AWARD_COUNT == 9 && ETLAB_STAT_COUNT == 6, "nine Christmas awards, six own counters");
+	for (i = 0; i < ETLAB_AWARD_COUNT; i++)
+	{
+		Check(etlabAwards[i].title[0] && etlabAwards[i].description[0] && !strchr(etlabAwards[i].title, '"') && !strchr(etlabAwards[i].description, '"'), "every award has a chat-safe title and description");
+	}
+	for (i = 0; i < ETLAB_STAT_COUNT; i++)
+	{
+		Check(!Q_strncmp(etlabStatNames[i], "etlab_", 6) && (!i || Q_stricmp(etlabStatNames[i], etlabStatNames[i - 1])), "session keys are prefixed and distinct");
+	}
+
+	ResetScene();
+	Com_Memset(g_clients, 0, sizeof(gclient_t) * 3);
+	for (i = 0; i < 3; i++)
+	{
+		g_entities[i].client = &g_clients[i];
+		g_entities[i].inuse = qtrue;
+		g_entities[i].s.number = i;
+		g_clients[i].pers.enterTime = 0;
+		Q_strncpyz(g_clients[i].pers.netname, va("Player%i", i), sizeof(g_clients[i].pers.netname));
+		level.sortedClients[i] = i;
+	}
+	level.numConnectedClients = 3;
+	axis->sess.sessionTeam = TEAM_AXIS;
+	allies->sess.sessionTeam = TEAM_ALLIES;
+	spectator->sess.sessionTeam = TEAM_SPECTATOR;
+
+	// Counting window: like the original stats only while the match runs
+	G_ETLabAwardCount(player, ETLAB_STAT_REVIVES);
+	Check(axis->sess.etlabStats[ETLAB_STAT_REVIVES] == 0, "no award counting during warmup");
+	g_gamestate.integer = GS_PLAYING;
+	G_ETLabAwardCount(player, ETLAB_STAT_REVIVES);
+	G_ETLabAwardCount(NULL, ETLAB_STAT_REVIVES);
+	G_ETLabAwardCount(target, ETLAB_STAT_REVIVES);
+	Check(axis->sess.etlabStats[ETLAB_STAT_REVIVES] == 1, "award events count while playing, entities without client ignored");
+
+	// New Year's Firecracker: real damage path, hidden enemy mines and hand grenades only
+	SetupMine(target, TEAM_ALLIES, qfalse);
+	G_Damage(target, NULL, player, NULL, NULL, 30, 0, MOD_GRENADE_LAUNCHER);
+	Check(target->freeAfterEvent && axis->sess.etlabStats[ETLAB_STAT_GRENADE_MINES] == 1, "hidden enemy mine blown up by grenade counts");
+	SetupMine(target, TEAM_AXIS, qfalse);
+	G_Damage(target, NULL, player, NULL, NULL, 30, 0, MOD_GRENADE_LAUNCHER);
+	Check(target->freeAfterEvent && axis->sess.etlabStats[ETLAB_STAT_GRENADE_MINES] == 1, "own hidden mine explodes but does not count");
+	SetupMine(target, TEAM_ALLIES, qtrue);
+	G_Damage(target, NULL, player, NULL, NULL, 30, 0, MOD_GRENADE_LAUNCHER);
+	Check(target->freeAfterEvent && axis->sess.etlabStats[ETLAB_STAT_GRENADE_MINES] == 1, "spotted mine is no hidden-mine award");
+	SetupMine(target, TEAM_ALLIES, qfalse);
+	G_Damage(target, NULL, player, NULL, NULL, 30, 0, MOD_LUGER);
+	Check(!target->freeAfterEvent && axis->sess.etlabStats[ETLAB_STAT_GRENADE_MINES] == 1, "bullets neither detonate nor count hidden mines");
+
+	// Santa's Little Helper: real pliers dispatch, enemy mines and dynamite for every class
+	axis->sess.playerType = PC_SOLDIER;
+	axis->ps.stats[STAT_PLAYER_CLASS] = PC_SOLDIER;
+	axis->ps.weapon = WP_PLIERS;
+	level.engineerChargeTime[0] = 30000;
+	traceTarget = MAX_CLIENTS;
+	SetupMine(target, TEAM_ALLIES, qfalse);
+	target->health = 248;
+	Weapon_Engineer(player);
+	Check(!target->inuse && axis->sess.etlabStats[ETLAB_STAT_DEFUSES] == 1, "enemy landmine defused by Soldier counts");
+	SetupMine(target, TEAM_AXIS, qfalse);
+	target->health = 248;
+	Weapon_Engineer(player);
+	Check(!target->inuse && axis->sess.etlabStats[ETLAB_STAT_DEFUSES] == 1, "own landmine defuse does not count");
+	for (i = 0; i < 2; i++)
+	{
+		Com_Memset(target, 0, sizeof(*target));
+		target->inuse = qtrue;
+		target->s.number = MAX_CLIENTS;
+		target->s.eType = ET_MISSILE;
+		target->s.weapon = WP_DYNAMITE;
+		target->methodOfDeath = MOD_DYNAMITE;
+		target->s.effect1Time = 1;
+		target->s.teamNum = i ? TEAM_AXIS : TEAM_ALLIES;
+		target->health = 246;
+		target->classname = "dynamite";
+		Weapon_Engineer(player);
+		Check(target->health == 255 && axis->sess.etlabStats[ETLAB_STAT_DEFUSES] == 2, "enemy dynamite defuse counts, own dynamite does not");
+	}
+
+	// Workshop Elf: completed MG 42 repair by the Engineer
+	axis->sess.playerType = PC_ENGINEER;
+	axis->ps.stats[STAT_PLAYER_CLASS] = PC_ENGINEER;
+	Com_Memset(target, 0, sizeof(*target));
+	target->inuse = qtrue;
+	target->s.number = MAX_CLIENTS;
+	target->s.eType = ET_GENERAL;
+	target->s.frame = 1;
+	target->classname = "misc_mg42";
+	target->health = 252;
+	Weapon_Engineer(player);
+	Check(target->s.frame == 0 && axis->sess.etlabStats[ETLAB_STAT_CONSTRUCTIONS] == 1, "completed MG 42 repair counts");
+	target->health = 100;
+	target->s.frame = 1;
+	axis->ps.classWeaponTime = 0;
+	Weapon_Engineer(player);
+	Check(axis->sess.etlabStats[ETLAB_STAT_CONSTRUCTIONS] == 1, "unfinished repair does not count");
+	traceTarget = ENTITYNUM_NONE;
+
+	// Star of Bethlehem: real binocular spotting
+	axis->ps.stats[STAT_KEYS] = 1 << INV_BINOCS;
+	axis->ps.eFlags |= EF_ZOOMING;
+	player->health = 100;
+	level.numConnectedClients = 1;
+	SetupMine(target, TEAM_ALLIES, qfalse);
+	VectorSet(target->r.currentOrigin, 500, 0, 0);
+	for (i = 0; i < 5; i++)
+	{
+		level.time += 500;
+		G_CheckSpottedLandMines();
+	}
+	Check(target->s.modelindex2 && axis->sess.etlabStats[ETLAB_STAT_MINES_SPOTTED] == 1, "spotted enemy landmine counts");
+	axis->ps.eFlags &= ~EF_ZOOMING;
+	level.numConnectedClients = 3;
+
+	// Stats reset with the original session stats
+	for (i = 0; i < 3; i++)
+	{
+		G_deleteStats(i);
+		Check(!g_clients[i].sess.etlabStats[ETLAB_STAT_REVIVES] && !g_clients[i].sess.etlabStats[ETLAB_STAT_DEFUSES] && !g_clients[i].sess.etlabStats[ETLAB_STAT_CONSTRUCTIONS], "stats reset clears award counters");
+	}
+
+	// Winners: Axis/Allies only, ties to the higher-ranked player, Krampus tie-break by team damage
+	axis->sess.etlabStats[ETLAB_STAT_REVIVES] = 3;
+	axis->sess.etlabStats[ETLAB_STAT_MINES_SPOTTED] = 1;
+	axis->sess.team_kills = 2;
+	axis->sess.team_damage_given = 100;
+	axis->sess.aWeaponStats[WS_LUGER].headshots = 2;
+	axis->sess.aWeaponStats[WS_MP40].headshots = 1;
+	axis->sess.aWeaponStats[WS_KNIFE].kills = 1;
+	allies->sess.etlabStats[ETLAB_STAT_REVIVES] = 3;
+	allies->sess.etlabStats[ETLAB_STAT_DEFUSES] = 2;
+	allies->sess.etlabStats[ETLAB_STAT_GRENADE_MINES] = 1;
+	allies->sess.etlabStats[ETLAB_STAT_PACKS] = 4;
+	allies->sess.team_kills = 2;
+	allies->sess.team_damage_given = 200;
+	allies->sess.aWeaponStats[WS_KNIFE_KBAR].kills = 1;
+	spectator->sess.etlabStats[ETLAB_STAT_REVIVES] = 10;
+	spectator->sess.etlabStats[ETLAB_STAT_CONSTRUCTIONS] = 5;
+	Check(G_ETLabAwardValue(axis, ETLAB_AWARD_NUTCRACKER) == 3 && G_ETLabAwardValue(allies, ETLAB_AWARD_SILENTNIGHT) == 1, "headshots and knife kills come from the weapon stats");
+	level.time = 600000;
+	level.intermissiontime = 0;
+
+	g_etlabAwards.integer = 0;
+	chatLines = 0;
+	G_BuildEndgameStats();
+	Check(EndgameStatValues(values, ARRAY_LEN(values)) == original * 3 && !chatLines, "awards off: original endgame configstring, no chat");
+
+	g_etlabAwards.integer = 1;
+	G_BuildEndgameStats();
+	Check(EndgameStatValues(values, ARRAY_LEN(values)) == (original + ETLAB_AWARD_COUNT) * 3, "awards on: nine triplets appended");
+	CheckAwardTriplet(values, original, ETLAB_AWARD_ANGEL, 0, 3, TEAM_AXIS, "Christmas Angel: tie goes to the higher-ranked player, spectator excluded");
+	CheckAwardTriplet(values, original, ETLAB_AWARD_HELPER, 1, 2, TEAM_ALLIES, "Santa's Little Helper");
+	CheckAwardTriplet(values, original, ETLAB_AWARD_STAR, 0, 1, TEAM_AXIS, "Star of Bethlehem");
+	CheckAwardTriplet(values, original, ETLAB_AWARD_KRAMPUS, 1, 2, TEAM_ALLIES, "Krampus: tie broken by team damage");
+	CheckAwardTriplet(values, original, ETLAB_AWARD_FIRECRACKER, 1, 1, TEAM_ALLIES, "New Year's Firecracker");
+	CheckAwardTriplet(values, original, ETLAB_AWARD_NUTCRACKER, 0, 3, TEAM_AXIS, "Nutcracker sums headshots of all weapons");
+	CheckAwardTriplet(values, original, ETLAB_AWARD_SILENTNIGHT, 0, 1, TEAM_AXIS, "Silent Night counts both knives");
+	CheckAwardTriplet(values, original, ETLAB_AWARD_WORKSHOPELF, -1, 0, TEAM_FREE, "Workshop Elf: nobody qualifies");
+	CheckAwardTriplet(values, original, ETLAB_AWARD_SECRETSANTA, 1, 4, TEAM_ALLIES, "Secret Santa");
+	Check(chatLines == 9 && strstr(lastChat, "Secret Santa") && strstr(lastChat, "Player1") && strstr(lastChat, " - 4"), "chat: header and one line per given award");
+
+	for (i = 0; i < 3; i++)
+	{
+		G_deleteStats(i);
+		g_entities[i].client = NULL;
+	}
+	level.numConnectedClients = 0;
+	g_etlabAwards.integer = 0;
+	g_gamestate.integer = GS_WARMUP;
+}
+
 int main(void)
 {
 	int team, cls, i, xp;
@@ -563,6 +795,7 @@ int main(void)
 	CheckMineDamage();
 	CheckModifiers();
 	CheckQuickSpotting();
+	CheckAwards();
 	for (team = TEAM_AXIS; team <= TEAM_ALLIES; team++)
 	{
 		for (cls = PC_SOLDIER; cls < NUM_PLAYER_CLASSES; cls++)
@@ -579,6 +812,6 @@ int main(void)
 			}
 		}
 	}
-	printf("PASS: %d production spawn/menu/pliers/mines/modifier checks, both teams, all classes and primary loadouts, XP 0/4.\n", checks);
+	printf("PASS: %d production spawn/menu/pliers/mines/modifier/award checks, both teams, all classes and primary loadouts, XP 0/4.\n", checks);
 	return 0;
 }

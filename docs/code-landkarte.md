@@ -17,6 +17,9 @@ Die folgenden Pfade beziehen sich auf den automatisch vorbereiteten Release-Sour
 | Rundenmodifikatoren, Tabelle und Pool | `src/game/bg_etlab.c`: `etlabModifiers`, `BG_ETLabModifierByName`, `BG_ETLabModifierInPool`; Enum und `CS_ETLAB_MODIFIER` in `bg_public.h` |
 | Rundenmodifikatoren, Server | `src/game/g_etlab.c`: `G_ETLabModifierInit`, `G_ETLabModifierFrame`, `G_ETLabModifierSet`, `G_ETLabModifier_v`; Hooks in `g_active.c` (Gravitation, Tempo, Limbo), `g_combat.c` (Rückstoß, Kopfschuss, Vampir), `g_stats.c`, `g_cmds.c`, `g_weapon.c`, `g_teammapdata.c`, `g_client.c`; Cvars in `g_cvars.c` |
 | Rundenmodifikatoren, Client | `src/cgame/cg_etlab.c`: Konfigstring, HUD-Zeile, Verstärkungstimer; Einbindung in `cg_servercmds.c`, `cg_main.c`, `cg_draw.c` |
+| Rundenauszeichnungen, Tabelle | `src/game/bg_etlab.c`: `etlabAwards`; Enum `etlabAward_t` in `bg_public.h`; Zähler `etlabStat_t` und `sess.etlabStats` in `g_local.h` |
+| Rundenauszeichnungen, Server | `src/game/g_etlab.c`: `G_ETLabAwardCount`, `G_ETLabAwardValue`, `G_ETLabBuildAwards`; Aufruf am Ende von `G_BuildEndgameStats` (`g_stats.c`); Zähler-Hooks in `g_weapon.c` (Revive, Entschärfen, Bauen, MG-42-Reparatur), `g_teammapdata.c`, `g_items.c`, `g_combat.c`; Reset in `G_deleteStats` (`g_match.c`), Persistenz in `g_session.c`; Cvar `g_etlabAwards` |
+| Rundenauszeichnungen, Client | `src/cgame/cg_debriefing.c`: `CG_Debriefing_AwardIndex`, `CG_Debriefing_Awards_Draw`; `NUM_ORIGINAL_ENDGAME_AWARDS`/`NUM_ENDGAME_AWARDS` in `cg_local.h` |
 | Deklarationen | `bg_public.h`, `g_local.h` |
 
 Alle bisherigen Spielregeln passen in den Gamecode-Mod. Für weitere Klassen müssen zusätzlich Klassenanzahl, Tabellen, Limbo, Characters, Session, Skills, Bots und Netzwerkannahmen zusammen geprüft werden. Eine neue Klasse ist nicht automatisch ein neuer XP-Skill.
