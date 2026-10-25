@@ -27,6 +27,7 @@ Vor Aenderungen `docs/spielregeln.md` und passende Symbole aus `docs/code-landka
 - Zangenbesitz und Ausfuehrungsberechtigung getrennt pruefen: `G_CanUsePliersOn`, `Weapon_Engineer`, Interaktionshinweise. `PM_Weapon` ist gemeinsame Prediction/Server-Logik; 100 statt 50 ms nur fuer berechtigte Nicht-Engineers.
 - Minensuche umfasst Fernglas, `G_CheckSpottedLandMines`, Snapshot-Sichtbarkeit und Hinweise. `G_RevealLandmine` erzeugt den beschiessbaren Trefferbereich. Klassen-Ausnahmen aus Gameplay-Vertrag erhalten.
 - Verborgene Minen akzeptieren nur beide Handgranaten-Schadensarten; `takedamage` allein reicht nicht. Radius/Deckung und scharfer Zustand bleiben Bedingungen.
+- Nischenwaffen: Werte nur ueber `BG_ETLabApplyWeaponTuning` setzen; Server und Client wenden dieselbe Maske aus `CS_ETLAB_WEAPONS` an, sonst laeuft die Prediction auseinander. In `bg_playerClasses` nur `startingAmmo` aendern, cgame speichert dort Icon-Handles.
 - Uebungsfeld: lokaler Host + Listenserver + Oasis + Opt-in. Vector-Makros werten Argumente mehrfach aus; keine Inkremente in Makroargumenten.
 
 ## Nachweise

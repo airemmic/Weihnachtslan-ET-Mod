@@ -36,7 +36,7 @@ Startparameter für die tatsächliche offizielle Installation ableiten:
 ./etl.x86_64 +set fs_game etlab +set g_etlabPractice 1 +map oasis
 ./etlded.x86_64 +set dedicated 1 +set net_ip 0.0.0.0 +set net_port 27960 +set fs_game etlab +set sv_advert 0 +map oasis
 # Erweiterungen sind ohne Cvar aus. Beispiel zum Einschalten am Server (Werte laut spielregeln.md):
-# +set g_etlabModifierPool all +set g_etlabModifierMode 3 +set g_etlabAwards 1
+# +set g_etlabModifierPool all +set g_etlabModifierMode 3 +set g_etlabAwards 1 +set g_etlabWeaponTuning all
 ```
 
 ```powershell
