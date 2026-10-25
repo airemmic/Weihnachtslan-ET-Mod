@@ -26,21 +26,23 @@ Zweck: Sollverhalten bei Änderungen und Tests erhalten. Regeln gelten für beid
 ## Rundenauszeichnungen
 
 - **Konfiguration:** `g_etlabAwards 1` aktiviert die weihnachtlichen Auszeichnungen. Standard `0` entspricht dem bisherigen Rundenende ohne zusätzliche Einträge und Chat-Zeilen.
-- **Anzeige:** Am Rundenende in der Awards-Liste des Debriefings vor den Original-Auszeichnungen und als Chat-Ansage: Kopfzeile, danach je vergebener Auszeichnung Titel, Kriterium, Spieler und Wert. Titel sind englisch.
+- **Anzeige:** Am Rundenende in der Awards-Liste des Debriefings vor den Original-Auszeichnungen und als Chat-Ansage: Kopfzeile, danach je vergebener Auszeichnung Titel, Kriterium, Spieler und Wert.
+- **Sprache:** Endpanel und Chat-Zeilen folgen der Spracheinstellung `cl_lang` des jeweiligen Spielers. Deutsch kommt aus `etmain/locale/mod/de.po` im Mod-PK3; alle anderen Sprachen zeigen die englischen Texte. Der Server sendet dafür nur Award-Index, Spieler und Wert (`etlabawards`, `etlabaward`); der Client setzt die Zeile zusammen.
 - **Vergabe:** Nur Spieler in Axis oder Allies mit mindestens einem Punkt. Gleichstand geht an den höher platzierten Spieler; Krampus entscheidet Gleichstand wie das Original über Team-Schaden. Gezählt wird nur während der laufenden Runde; die Zähler leben und werden zurückgesetzt wie die Original-Sessionstatistik.
 - **Invarianten:** Original-Auszeichnungen, deren Bedingungen und Reihenfolge in `CS_ENDGAME_STATS` bleiben unverändert; die neuen Werte werden angehängt. Der Original-Award „I Ain't Got No Friends“ bleibt mit seiner Schwelle von fünf Teamkills bestehen.
 
-| Titel | Kriterium |
-|---|---|
-| Christmas Angel | Wiederbelebungen; wie beim Revive-XP ohne zuvor im Team getötete Spieler |
-| Santa's Little Helper | Entschärftes gegnerisches Dynamit und gegnerische Landminen, alle Klassen |
-| Star of Bethlehem | Per Fernglas entdeckte gegnerische Landminen |
-| Krampus | Teamkills, ab einem |
-| New Year's Firecracker | Verborgene gegnerische Landminen, durch eigene Handgranate gesprengt |
-| Nutcracker | Kopfschusstreffer aller Waffen |
-| Silent Night | Messer-Kills, beide Messer |
-| Workshop Elf | Fertiggestellte Konstruktionen (Endstufe) und vollständig reparierte MG 42 |
-| Secret Santa | Von Teamkameraden aufgenommene Health- und Ammo-Packs |
+| Titel (en) | Titel (de) | Kriterium |
+|---|---|---|
+| Christmas Angel | Christkind | Wiederbelebungen; wie beim Revive-XP ohne zuvor im Team getötete Spieler |
+| Santa's Little Helper | Weihnachtswichtel | Entschärftes gegnerisches Dynamit und gegnerische Landminen, alle Klassen |
+| Star of Bethlehem | Stern von Bethlehem | Per Fernglas entdeckte gegnerische Landminen |
+| Krampus | Krampus | Teamkills, ab einem |
+| Grinch | Grinch | Zerstörte Bauwerke und Missionsziele, für die das Spiel Zerstörungs-XP vergibt; einfache zerbrechliche Objekte ohne XP-Bonus zählen nicht |
+| New Year's Firecracker | Silvesterknaller | Verborgene gegnerische Landminen, durch eigene Handgranate gesprengt |
+| Nutcracker | Nussknacker | Kopfschusstreffer aller Waffen |
+| Silent Night | Stille Nacht | Messer-Kills, beide Messer |
+| Workshop Elf | Werkstatt-Elf | Fertiggestellte Konstruktionen (Endstufe) und vollständig reparierte MG 42 |
+| Secret Santa | Geheimwichtel | Von Teamkameraden aufgenommene Health- und Ammo-Packs |
 
 ## Übungsfeld-Invarianten
 

@@ -61,6 +61,7 @@ python3 scripts/etlab-linux.py start --locked --mine-smoke
 - Windows-State: `.cache/state.json`; Linux-State: `.cache/linux/state.json`. `sourcePath` relativ zum Repository-Root auflösen.
 - Source dort bearbeiten; Tests in `tests/native/` bearbeiten. Nach Gameplay-Änderungen `save` ausführen, damit der kanonische Patch alle Änderungen enthält.
 - Neue Gamecode-Dateien im Source-Checkout per `git add -N <Pfad>` erfassen; keine eigenen Source-Commits. Patch im äußeren Repository reviewen.
+- `save` übernimmt nur `src/game`, `src/cgame`, `src/ui`, `src/tvgame`, `CMakeLists.txt` und Mod-Übersetzungen unter `etmain/locale/mod/`; andere Pfade brechen ab.
 - Latest-Policy: offizieller Stable-Release, passender Tag und offizielles Engine-Archiv. Plattform-Lock enthält Commit, Downloadadresse, MD5 und SHA256.
 - `-Locked` / `--locked`: festgehaltene Version ohne Latest-Abfrage. Beim Release gleiche Version und Patch für alle Zielplattformen sicherstellen.
 - Fehlgeschlagene Release-Erkennung/Download/Patch-Anwendung führt zum Abbruch. Nicht still auf ältere Version ausweichen. Bereits vorbereitete Stände und ungesicherte Edits erhalten.

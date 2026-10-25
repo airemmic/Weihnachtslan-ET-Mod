@@ -7,7 +7,7 @@ $staged = @(Invoke-Git @('-C', $source, 'diff', '--cached', '--name-only'))
 if ($staged.Count) { throw 'Bitte zuerst alle Aenderungen im Source-Checkout unstage; neue Dateien mit git add -N markieren.' }
 $paths = @(Invoke-Git @('-C', $source, 'diff', '--name-only'))
 foreach ($path in $paths) {
-    if ($path -ne 'CMakeLists.txt' -and $path -notmatch '^src/(game|cgame|ui|tvgame)/') { throw "Aenderung ausserhalb des Mod-Gamecodes: $path. Engine/Library-Aenderungen gehoeren nicht in diesen Mod." }
+    if ($path -ne 'CMakeLists.txt' -and $path -notmatch '^(src/(game|cgame|ui|tvgame)/|etmain/locale/mod/)') { throw "Aenderung ausserhalb des Mod-Gamecodes: $path. Engine/Library-Aenderungen gehoeren nicht in diesen Mod." }
 }
 $unknown = @(Invoke-Git @('-C', $source, 'ls-files', '--others', '--exclude-standard') | Where-Object { $_ -notlike 'tests/*' })
 if ($unknown.Count) { throw "Neue Moddateien zuerst mit git add -N markieren: $($unknown -join ', ')" }

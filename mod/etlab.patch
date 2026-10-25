@@ -12,6 +12,78 @@ index 9bce4a2..59038d8 100644
 +	enable_testing()
 +	add_subdirectory(tests)
 +endif()
+diff --git a/etmain/locale/mod/de.po b/etmain/locale/mod/de.po
+index 9181aff..0fe81b6 100644
+--- a/etmain/locale/mod/de.po
++++ b/etmain/locale/mod/de.po
+@@ -8121,3 +8121,67 @@ msgstr "BOTS AN"
+ 
+ msgid "MSGID_MENU_INGAME_REFEREE_BOTS_BOTS_OFF"
+ msgstr "BOTS AUS"
++
++# ETLab Christmas awards
++msgid "*** Christmas Awards ***"
++msgstr "*** Weihnachtsauszeichnungen ***"
++
++msgid "Christmas Angel"
++msgstr "Christkind"
++
++msgid "most revives"
++msgstr "meiste Wiederbelebungen"
++
++msgid "Santa's Little Helper"
++msgstr "Weihnachtswichtel"
++
++msgid "most dynamite and landmines defused"
++msgstr "meiste entschärfte Dynamitladungen und Minen"
++
++msgid "Star of Bethlehem"
++msgstr "Stern von Bethlehem"
++
++msgid "most landmines spotted"
++msgstr "meiste entdeckte Minen"
++
++msgid "Krampus"
++msgstr "Krampus"
++
++msgid "most team kills"
++msgstr "meiste Teamkills"
++
++msgid "Grinch"
++msgstr "Grinch"
++
++msgid "most enemy structures destroyed"
++msgstr "meiste gegnerische Bauwerke zerstört"
++
++msgid "New Year's Firecracker"
++msgstr "Silvesterknaller"
++
++msgid "most hidden mines blown up by grenade"
++msgstr "meiste verborgene Minen per Granate gesprengt"
++
++msgid "Nutcracker"
++msgstr "Nussknacker"
++
++msgid "most headshots"
++msgstr "meiste Kopfschüsse"
++
++msgid "Silent Night"
++msgstr "Stille Nacht"
++
++msgid "most knife kills"
++msgstr "meiste Messer-Kills"
++
++msgid "Workshop Elf"
++msgstr "Werkstatt-Elf"
++
++msgid "most constructions and repairs"
++msgstr "meiste Bauten und Reparaturen"
++
++msgid "Secret Santa"
++msgstr "Geheimwichtel"
++
++msgid "most packs handed to teammates"
++msgstr "meiste Packs an Mitspieler verteilt"
 diff --git a/src/cgame/cg_debriefing.c b/src/cgame/cg_debriefing.c
 index 373a9f2..6517bbe 100644
 --- a/src/cgame/cg_debriefing.c
@@ -114,10 +186,10 @@ index c8c5b25..f78405c 100644
  
 diff --git a/src/cgame/cg_etlab.c b/src/cgame/cg_etlab.c
 new file mode 100644
-index 0000000..c7e3781
+index 0000000..bf3d028
 --- /dev/null
 +++ b/src/cgame/cg_etlab.c
-@@ -0,0 +1,86 @@
+@@ -0,0 +1,122 @@
 +/*
 + * Wolfenstein: Enemy Territory GPL Source Code
 + * Copyright (C) 1999-2010 id Software LLC, a ZeniMax Media company.
@@ -142,7 +214,7 @@ index 0000000..c7e3781
 + */
 +/**
 + * @file cg_etlab.c
-+ * @brief ETLab round modifiers on the client: configstring parsing and HUD note.
++ * @brief ETLab round modifiers on the client (configstring parsing and HUD note) and Christmas award chat lines.
 + */
 +
 +#include "cg_local.h"
@@ -204,6 +276,42 @@ index 0000000..c7e3781
 +	width = CG_Text_Width_Ext(text, scale, 0, &cgs.media.limboFont2);
 +	CG_Text_Paint_Ext(Ccg_WideX(SCREEN_WIDTH) / 2.f - width / 2.f, 54, scale, scale, color, text, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
 +}
++
++/**
++ * @brief Christmas award chat line in the player's language.
++ * Server commands: "etlabawards" (header) and "etlabaward <award> <clientNum> <value> <name>".
++ */
++void CG_ETLabAwardChat(qboolean header)
++{
++	char       name[MAX_NAME_LENGTH];
++	const char *line;
++	int        award, value;
++
++	if (cg_teamChatsOnly.integer && cgs.clientinfo[cg.clientNum].team != TEAM_SPECTATOR)
++	{
++		return;
++	}
++
++	if (header)
++	{
++		line = va("^3%s", CG_TranslateString("*** Christmas Awards ***"));
++	}
++	else
++	{
++		award = Q_atoi(CG_Argv(1));
++		value = Q_atoi(CG_Argv(3));
++		Q_strncpyz(name, CG_Argv(4), sizeof(name));
++		if (award < 0 || award >= ETLAB_AWARD_COUNT)
++		{
++			return;
++		}
++		line = va("^3%s^7 (%s): %s^7 - %i", CG_TranslateString(etlabAwards[award].title), CG_TranslateString(etlabAwards[award].description), name, value);
++	}
++
++	CG_AddToTeamChat(line, -1);
++	CG_Printf("%s\n", line);
++	CG_WriteToLog("%s\n", line);
++}
 diff --git a/src/cgame/cg_limbopanel.c b/src/cgame/cg_limbopanel.c
 index 55a8fda..facb692 100644
 --- a/src/cgame/cg_limbopanel.c
@@ -236,7 +344,7 @@ index 55a8fda..facb692 100644
  				break;
  			}
 diff --git a/src/cgame/cg_local.h b/src/cgame/cg_local.h
-index c71728b..6cb3576 100644
+index c71728b..7961816 100644
 --- a/src/cgame/cg_local.h
 +++ b/src/cgame/cg_local.h
 @@ -2367,10 +2367,11 @@ typedef struct
@@ -273,7 +381,7 @@ index c71728b..6cb3576 100644
  } cgs_t;
  
  //==============================================================================
-@@ -3408,6 +3413,12 @@ void CG_ShaderStateChanged(void);
+@@ -3408,6 +3413,13 @@ void CG_ShaderStateChanged(void);
  void CG_ChargeTimesChanged(void);
  void CG_TeamRestrictionsChanged(void);
  void CG_SkillLevelsChanged(void);
@@ -283,6 +391,7 @@ index c71728b..6cb3576 100644
 +qboolean CG_ETLabModifierActive(int index);
 +int CG_ETLabLimboTime(int base);
 +void CG_ETLabDrawModifier(void);
++void CG_ETLabAwardChat(qboolean header);
  void CG_LoadVoiceChats(void);
  void CG_PlayBufferedVoiceChats(void);
  void CG_AddToTeamChat(const char *str, int clientnum);
@@ -299,7 +408,7 @@ index 2212fef..a4de08c 100644
  	CG_InitConsoleCommands();
  
 diff --git a/src/cgame/cg_servercmds.c b/src/cgame/cg_servercmds.c
-index b20afe0..a6dffaf 100644
+index b20afe0..cb61b32 100644
 --- a/src/cgame/cg_servercmds.c
 +++ b/src/cgame/cg_servercmds.c
 @@ -1054,6 +1054,9 @@ static void CG_ConfigStringModified(void)
@@ -312,6 +421,20 @@ index b20afe0..a6dffaf 100644
  	case CS_SKYBOXORG:
  		CG_ParseSkyBox();
  		break;
+@@ -3039,6 +3042,13 @@ static void CG_ServerCommand(void)
+ 		return;
+ 	}
+ 
++	// ETLab Christmas awards: chat lines composed in the player's language
++	if (!Q_stricmp(cmd, "etlabawards") || !Q_stricmp(cmd, "etlabaward"))
++	{
++		CG_ETLabAwardChat(!Q_stricmp(cmd, "etlabawards"));
++		return;
++	}
++
+ 	hash = BG_StringHashValue(cmd);
+ 	switch (hash)
+ 	{
 diff --git a/src/game/bg_classes.c b/src/game/bg_classes.c
 index 9902fc3..84c00f9 100644
 --- a/src/game/bg_classes.c
@@ -482,10 +605,10 @@ index 9902fc3..84c00f9 100644
  		}
 diff --git a/src/game/bg_etlab.c b/src/game/bg_etlab.c
 new file mode 100644
-index 0000000..64bd921
+index 0000000..932382f
 --- /dev/null
 +++ b/src/game/bg_etlab.c
-@@ -0,0 +1,145 @@
+@@ -0,0 +1,146 @@
 +/*
 + * Wolfenstein: Enemy Territory GPL Source Code
 + * Copyright (C) 1999-2010 id Software LLC, a ZeniMax Media company.
@@ -625,6 +748,7 @@ index 0000000..64bd921
 +	{ "Santa's Little Helper",  "most dynamite and landmines defused"    },
 +	{ "Star of Bethlehem",      "most landmines spotted"                 },
 +	{ "Krampus",                "most team kills"                        },
++	{ "Grinch",                 "most enemy structures destroyed"        },
 +	{ "New Year's Firecracker", "most hidden mines blown up by grenade"  },
 +	{ "Nutcracker",             "most headshots"                         },
 +	{ "Silent Night",           "most knife kills"                       },
@@ -650,7 +774,7 @@ index d4164bc..cda79ca 100644
  
  #ifdef CGAMEDLL
 diff --git a/src/game/bg_public.h b/src/game/bg_public.h
-index ebdba6d..045664e 100644
+index ebdba6d..a2e0c24 100644
 --- a/src/game/bg_public.h
 +++ b/src/game/bg_public.h
 @@ -420,6 +420,7 @@ extern const int aReinfSeeds[MAX_REINFSEEDS];
@@ -661,7 +785,7 @@ index ebdba6d..045664e 100644
  
  #define CS_MODELS                       64
  #define CS_SOUNDS                       (CS_MODELS +               MAX_MODELS)              ///< 320 (256)
-@@ -2659,6 +2660,75 @@ bg_playerclass_t *BG_GetPlayerClassInfo(int team, int cls);
+@@ -2659,6 +2660,77 @@ bg_playerclass_t *BG_GetPlayerClassInfo(int team, int cls);
  bg_playerclass_t *BG_PlayerClassForPlayerState(playerState_t *ps);
  qboolean BG_ClassHasWeapon(bg_playerclass_t *classInfo, weapon_t weap);
  qboolean BG_WeaponIsPrimaryForClassAndTeam(int classnum, team_t team, weapon_t weapon);
@@ -713,12 +837,14 @@ index ebdba6d..045664e 100644
 +int BG_ETLabModifierPoolList(const char *pool, int *indexes);
 +
 +// ETLab Christmas awards (bg_etlab.c): appended to CS_ENDGAME_STATS after the original awards.
++// Titles and descriptions are msgids; translations live in etmain/locale/mod/<lang>.po.
 +typedef enum
 +{
 +	ETLAB_AWARD_ANGEL = 0,     ///< revives
 +	ETLAB_AWARD_HELPER,        ///< enemy dynamite and landmines defused
 +	ETLAB_AWARD_STAR,          ///< enemy landmines spotted
 +	ETLAB_AWARD_KRAMPUS,       ///< team kills
++	ETLAB_AWARD_GRINCH,        ///< enemy objectives and constructions destroyed
 +	ETLAB_AWARD_FIRECRACKER,   ///< hidden enemy landmines blown up with hand grenades
 +	ETLAB_AWARD_NUTCRACKER,    ///< headshots
 +	ETLAB_AWARD_SILENTNIGHT,   ///< knife kills
@@ -1057,10 +1183,10 @@ index a4b0bee..2fe7988 100644
  // skills
 diff --git a/src/game/g_etlab.c b/src/game/g_etlab.c
 new file mode 100644
-index 0000000..244f681
+index 0000000..0ddeec2
 --- /dev/null
 +++ b/src/game/g_etlab.c
-@@ -0,0 +1,574 @@
+@@ -0,0 +1,578 @@
 +/*
 + * Wolfenstein: Enemy Territory GPL Source Code
 + * Copyright (C) 1999-2010 id Software LLC, a ZeniMax Media company.
@@ -1531,6 +1657,7 @@ index 0000000..244f681
 +	"etlab_grenade_mines",
 +	"etlab_constructions",
 +	"etlab_packs",
++	"etlab_destructions",
 +};
 +
 +/**
@@ -1562,6 +1689,8 @@ index 0000000..244f681
 +		return cl->sess.etlabStats[ETLAB_STAT_MINES_SPOTTED];
 +	case ETLAB_AWARD_KRAMPUS:
 +		return cl->sess.team_kills;
++	case ETLAB_AWARD_GRINCH:
++		return cl->sess.etlabStats[ETLAB_STAT_DESTRUCTIONS];
 +	case ETLAB_AWARD_FIRECRACKER:
 +		return cl->sess.etlabStats[ETLAB_STAT_GRENADE_MINES];
 +	case ETLAB_AWARD_NUTCRACKER:
@@ -1585,6 +1714,7 @@ index 0000000..244f681
 + * @brief Appends "clientNum value team" per Christmas award to the endgame configstring and announces the winners.
 + * Only Axis/Allies players with at least one point qualify. Ties go to the higher-ranked player;
 + * Krampus breaks ties by team damage like the original team kill award.
++ * The chat lines are composed by cgame (etlabawards/etlabaward) so they follow each player's language.
 + */
 +void G_ETLabBuildAwards(char *buffer, int size)
 +{
@@ -1629,10 +1759,10 @@ index 0000000..244f681
 +		Q_strcat(buffer, size, va("%i %i %i ", bestClientNum, bestValue, best->sess.sessionTeam));
 +		if (!header)
 +		{
-+			trap_SendServerCommand(-1, "chat \"^3*** Christmas Awards ***\"");
++			trap_SendServerCommand(-1, "etlabawards");
 +			header = qtrue;
 +		}
-+		trap_SendServerCommand(-1, va("chat \"^3%s^7 (%s): %s^7 - %i\"", etlabAwards[award].title, etlabAwards[award].description, best->pers.netname, bestValue));
++		trap_SendServerCommand(-1, va("etlabaward %i %i %i \"%s\"", award, bestClientNum, bestValue, best->pers.netname));
 +	}
 +}
 diff --git a/src/game/g_items.c b/src/game/g_items.c
@@ -1656,10 +1786,10 @@ index 117fe9d..3773085 100644
  	}
  
 diff --git a/src/game/g_local.h b/src/game/g_local.h
-index 83781ff..bbc69d0 100644
+index 83781ff..c6bd3b9 100644
 --- a/src/game/g_local.h
 +++ b/src/game/g_local.h
-@@ -622,6 +622,18 @@ typedef struct
+@@ -622,6 +622,19 @@ typedef struct
  	unsigned int kills;
  } weapon_stat_t;
  
@@ -1672,13 +1802,14 @@ index 83781ff..bbc69d0 100644
 +	ETLAB_STAT_GRENADE_MINES,
 +	ETLAB_STAT_CONSTRUCTIONS,
 +	ETLAB_STAT_PACKS,
++	ETLAB_STAT_DESTRUCTIONS,
 +	ETLAB_STAT_COUNT
 +} etlabStat_t;
 +
  /**
   * @struct playerTeamStateState_t
   * @brief Client data that stays across multiple levels or tournament restarts
-@@ -674,6 +686,7 @@ typedef struct
+@@ -674,6 +687,7 @@ typedef struct
  	int time_axis;
  	int time_allies;
  	int time_played;
@@ -1686,7 +1817,7 @@ index 83781ff..bbc69d0 100644
  #ifdef FEATURE_RATING
  	// skill rating
  	float mu;
-@@ -856,6 +869,7 @@ typedef struct
+@@ -856,6 +870,7 @@ typedef struct
  	int savedClassWeaponTimeCvop;
  	int savedClassWeaponTime;
  
@@ -1694,7 +1825,7 @@ index 83781ff..bbc69d0 100644
  } clientPersistant_t;
  
  /**
-@@ -1413,6 +1427,12 @@ typedef struct level_locals_s
+@@ -1413,6 +1428,12 @@ typedef struct level_locals_s
  
  	uint64_t shoutcasters;     ///< shoutcasters, bitmask
  	int ebs_shoutcast[2];      ///< ebs shoutcast entities numbers
@@ -1707,7 +1838,7 @@ index 83781ff..bbc69d0 100644
  } level_locals_t;
  
  /**
-@@ -1718,6 +1738,32 @@ void aagun_stopusing(gentity_t *self);
+@@ -1718,6 +1739,32 @@ void aagun_stopusing(gentity_t *self);
  float AngleDifference(float ang1, float ang2);
  qboolean G_FlingClient(gentity_t *vic, int flingType);
  
@@ -1868,7 +1999,7 @@ index d8a1f56..f2e3220 100644
  
  #ifdef FEATURE_RATING
 diff --git a/src/game/g_stats.c b/src/game/g_stats.c
-index 0418bf6..8c0dd62 100644
+index 0418bf6..d7bf60d 100644
 --- a/src/game/g_stats.c
 +++ b/src/game/g_stats.c
 @@ -426,6 +426,12 @@ void G_AddSkillPoints(gentity_t *ent, skillType_t skill, float points, const cha
@@ -1884,7 +2015,20 @@ index 0418bf6..8c0dd62 100644
  	level.teamXP[skill][ent->client->sess.sessionTeam - TEAM_AXIS] += points;
  
  	ent->client->sess.skillpoints[skill] += points;
-@@ -1405,5 +1411,8 @@ void G_BuildEndgameStats(void)
+@@ -550,6 +556,12 @@ void G_AddKillSkillPointsForDestruction(gentity_t *attacker, meansOfDeath_t mod,
+ 		G_AddSkillPoints(attacker, GetMODTableData(mod)->skillType, constructibleStats->destructxpbonus, "destroying objective");
+ 	}
+ 
++	// ETLab Grinch: structures worth destruction XP only, not plain breakables
++	if (constructibleStats->destructxpbonus > 0)
++	{
++		G_ETLabAwardCount(attacker, ETLAB_STAT_DESTRUCTIONS);
++	}
++
+ 	// prepare scoreboard
+ 	CalculateRanks();
+ }
+@@ -1405,5 +1417,8 @@ void G_BuildEndgameStats(void)
  	}
  	Q_strcat(buffer, 1024, va("%i %i %i ", best ? bestClientNum : -1, best ? (int)(best->ps.persistant[PERS_SCORE] - best->sess.startxptotal) : 0, best ? best->sess.sessionTeam : TEAM_FREE));
  

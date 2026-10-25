@@ -77,8 +77,8 @@ extern void G_ArmLandmine(gentity_t *mine, gentity_t *player);
 static int traceTarget = ENTITYNUM_NONE;
 static char savedModifier[64];
 static qboolean radiusQuery, blocked;
-static char endgameStats[BIG_INFO_STRING], lastChat[MAX_STRING_CHARS];
-static int chatLines;
+static char endgameStats[BIG_INFO_STRING], lastAward[MAX_STRING_CHARS];
+static int chatLines, awardCommands;
 
 static intptr_t QDECL TestSyscall(intptr_t arg, ...)
 {
@@ -94,7 +94,8 @@ static intptr_t QDECL TestSyscall(intptr_t arg, ...)
 		const char *text;
 		(void)va_arg(ap, int);
 		text = va_arg(ap, const char *);
-		if (!Q_strncmp(text, "chat ", 5)) { chatLines++; Q_strncpyz(lastChat, text, sizeof(lastChat)); }
+		if (!Q_strncmp(text, "chat ", 5)) { chatLines++; }
+		if (!Q_strncmp(text, "etlabaward", 10)) { awardCommands++; Q_strncpyz(lastAward, text, sizeof(lastAward)); }
 		break;
 	}
 	case G_SET_CONFIGSTRING:
@@ -604,6 +605,39 @@ static void SetupMine(gentity_t *mine, int team, qboolean spotted)
 	mine->classname = "landmine";
 }
 
+/* Every award text needs a German msgstr in the mod catalog that ships in the PK3. */
+static void CheckGermanCatalog(void)
+{
+	FILE *file = fopen(ETLAB_LOCALE_DE, "rb");
+	char *data, *in, *out, *entry;
+	long size;
+	int i;
+
+	Check(file != NULL, "German mod catalog readable");
+	fseek(file, 0, SEEK_END);
+	size = ftell(file);
+	fseek(file, 0, SEEK_SET);
+	data = calloc(size + 1, 1);
+	Check(data && fread(data, 1, size, file) == (size_t)size, "German mod catalog loaded");
+	fclose(file);
+	for (in = out = data; *in; in++)
+	{
+		if (*in != '\r')
+		{
+			*out++ = *in;
+		}
+	}
+	*out = '\0';
+	for (i = -1; i < ETLAB_AWARD_COUNT * 2; i++)
+	{
+		const char *msgid = i < 0 ? "*** Christmas Awards ***" : (i % 2 ? etlabAwards[i / 2].description : etlabAwards[i / 2].title);
+		const char *key = va("\nmsgid \"%s\"\nmsgstr \"", msgid);
+		entry = strstr(data, key);
+		Check(entry && entry[strlen(key)] != '"', "German translation for every award title, description and the chat header");
+	}
+	free(data);
+}
+
 static void CheckAwards(void)
 {
 	gclient_t *axis = &g_clients[0], *allies = &g_clients[1], *spectator = &g_clients[2];
@@ -616,7 +650,7 @@ static void CheckAwards(void)
 #endif
 
 	// Shared table and session keys
-	Check(ETLAB_AWARD_COUNT == 9 && ETLAB_STAT_COUNT == 6, "nine Christmas awards, six own counters");
+	Check(ETLAB_AWARD_COUNT == 10 && ETLAB_STAT_COUNT == 7, "ten Christmas awards, seven own counters");
 	for (i = 0; i < ETLAB_AWARD_COUNT; i++)
 	{
 		Check(etlabAwards[i].title[0] && etlabAwards[i].description[0] && !strchr(etlabAwards[i].title, '"') && !strchr(etlabAwards[i].description, '"'), "every award has a chat-safe title and description");
@@ -728,7 +762,24 @@ static void CheckAwards(void)
 	}
 	Check(target->s.modelindex2 && axis->sess.etlabStats[ETLAB_STAT_MINES_SPOTTED] == 1, "spotted enemy landmine counts");
 	axis->ps.eFlags &= ~EF_ZOOMING;
+
+	// Grinch: the shared destruction XP path; plain breakables without destruction XP do not count
+	{
+		g_constructible_stats_t structure;
+		Com_Memset(&structure, 0, sizeof(structure));
+		structure.destructxpbonus = 5.f;
+		G_AddKillSkillPointsForDestruction(player, MOD_DYNAMITE, &structure);
+		structure.destructxpbonus = 0.f;
+		G_AddKillSkillPointsForDestruction(player, MOD_GRENADE_LAUNCHER, &structure);
+		Check(axis->sess.etlabStats[ETLAB_STAT_DESTRUCTIONS] == 1, "destroyed objective counts, plain breakable does not");
+	}
+
+	// XP paths rerun CalculateRanks; restore the ranked scene for the award selection
 	level.numConnectedClients = 3;
+	for (i = 0; i < 3; i++)
+	{
+		level.sortedClients[i] = i;
+	}
 
 	// Stats reset with the original session stats
 	for (i = 0; i < 3; i++)
@@ -745,6 +796,7 @@ static void CheckAwards(void)
 	axis->sess.aWeaponStats[WS_LUGER].headshots = 2;
 	axis->sess.aWeaponStats[WS_MP40].headshots = 1;
 	axis->sess.aWeaponStats[WS_KNIFE].kills = 1;
+	axis->sess.etlabStats[ETLAB_STAT_DESTRUCTIONS] = 2;
 	allies->sess.etlabStats[ETLAB_STAT_REVIVES] = 3;
 	allies->sess.etlabStats[ETLAB_STAT_DEFUSES] = 2;
 	allies->sess.etlabStats[ETLAB_STAT_GRENADE_MINES] = 1;
@@ -759,23 +811,24 @@ static void CheckAwards(void)
 	level.intermissiontime = 0;
 
 	g_etlabAwards.integer = 0;
-	chatLines = 0;
+	chatLines = awardCommands = 0;
 	G_BuildEndgameStats();
-	Check(EndgameStatValues(values, ARRAY_LEN(values)) == original * 3 && !chatLines, "awards off: original endgame configstring, no chat");
+	Check(EndgameStatValues(values, ARRAY_LEN(values)) == original * 3 && !awardCommands, "awards off: original endgame configstring, no announcement");
 
 	g_etlabAwards.integer = 1;
 	G_BuildEndgameStats();
-	Check(EndgameStatValues(values, ARRAY_LEN(values)) == (original + ETLAB_AWARD_COUNT) * 3, "awards on: nine triplets appended");
+	Check(EndgameStatValues(values, ARRAY_LEN(values)) == (original + ETLAB_AWARD_COUNT) * 3, "awards on: one triplet per award appended");
 	CheckAwardTriplet(values, original, ETLAB_AWARD_ANGEL, 0, 3, TEAM_AXIS, "Christmas Angel: tie goes to the higher-ranked player, spectator excluded");
 	CheckAwardTriplet(values, original, ETLAB_AWARD_HELPER, 1, 2, TEAM_ALLIES, "Santa's Little Helper");
 	CheckAwardTriplet(values, original, ETLAB_AWARD_STAR, 0, 1, TEAM_AXIS, "Star of Bethlehem");
 	CheckAwardTriplet(values, original, ETLAB_AWARD_KRAMPUS, 1, 2, TEAM_ALLIES, "Krampus: tie broken by team damage");
+	CheckAwardTriplet(values, original, ETLAB_AWARD_GRINCH, 0, 2, TEAM_AXIS, "Grinch");
 	CheckAwardTriplet(values, original, ETLAB_AWARD_FIRECRACKER, 1, 1, TEAM_ALLIES, "New Year's Firecracker");
 	CheckAwardTriplet(values, original, ETLAB_AWARD_NUTCRACKER, 0, 3, TEAM_AXIS, "Nutcracker sums headshots of all weapons");
 	CheckAwardTriplet(values, original, ETLAB_AWARD_SILENTNIGHT, 0, 1, TEAM_AXIS, "Silent Night counts both knives");
 	CheckAwardTriplet(values, original, ETLAB_AWARD_WORKSHOPELF, -1, 0, TEAM_FREE, "Workshop Elf: nobody qualifies");
 	CheckAwardTriplet(values, original, ETLAB_AWARD_SECRETSANTA, 1, 4, TEAM_ALLIES, "Secret Santa");
-	Check(chatLines == 9 && strstr(lastChat, "Secret Santa") && strstr(lastChat, "Player1") && strstr(lastChat, " - 4"), "chat: header and one line per given award");
+	Check(awardCommands == 10 && !chatLines && !Q_stricmp(lastAward, va("etlabaward %i 1 4 \"Player1\"", ETLAB_AWARD_SECRETSANTA)), "announcement: header and one client-localized line per given award");
 
 	for (i = 0; i < 3; i++)
 	{
@@ -795,6 +848,7 @@ int main(void)
 	CheckMineDamage();
 	CheckModifiers();
 	CheckQuickSpotting();
+	CheckGermanCatalog();
 	CheckAwards();
 	for (team = TEAM_AXIS; team <= TEAM_ALLIES; team++)
 	{
