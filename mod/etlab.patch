@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 9bce4a23d..59038d88f 100644
+index 9bce4a2..59038d8 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -236,3 +236,9 @@ include(cmake/ETLInstall.cmake)
@@ -12,8 +12,130 @@ index 9bce4a23d..59038d88f 100644
 +	enable_testing()
 +	add_subdirectory(tests)
 +endif()
+diff --git a/src/cgame/cg_draw.c b/src/cgame/cg_draw.c
+index c8c5b25..f78405c 100644
+--- a/src/cgame/cg_draw.c
++++ b/src/cgame/cg_draw.c
+@@ -3006,7 +3006,7 @@ void CG_DrawSpectatorMessage(hudComponent_t *comp)
+  */
+ int CG_CalculateReinfTime(team_t team)
+ {
+-	int dwDeployTime = (team == TEAM_AXIS) ? cg_redlimbotime.integer : cg_bluelimbotime.integer;
++	int dwDeployTime = CG_ETLabLimboTime((team == TEAM_AXIS) ? cg_redlimbotime.integer : cg_bluelimbotime.integer);
+ 	return 1 + (dwDeployTime - ((cgs.aReinfOffset[team] + cg.time - cgs.levelStartTime) % dwDeployTime)) / 1000;
+ }
+ 
+@@ -3183,7 +3183,7 @@ void CG_DrawFollow(hudComponent_t *comp)
+ 			{
+ 				if (cg.snap->ps.persistant[PERS_RESPAWNS_PENALTY] >= 0)
+ 				{
+-					int deployTime   = ((cgs.clientinfo[cg.snap->ps.clientNum].team == TEAM_AXIS) ? cg_redlimbotime.integer : cg_bluelimbotime.integer) / 1000;
++					int deployTime   = CG_ETLabLimboTime((cgs.clientinfo[cg.snap->ps.clientNum].team == TEAM_AXIS) ? cg_redlimbotime.integer : cg_bluelimbotime.integer) / 1000;
+ 					int reinfDepTime = CG_CalculateReinfTime(cgs.clientinfo[cg.snap->ps.clientNum].team) + cg.snap->ps.persistant[PERS_RESPAWNS_PENALTY] * deployTime;
+ 
+ 					if (reinfDepTime > 1)
+@@ -4315,6 +4315,7 @@ static void CG_Draw2D(void)
+ 		{
+ 			Menu_PaintAll();
+ 			CG_DrawTimedMenus();
++			CG_ETLabDrawModifier();
+ 		}
+ 	}
+ 
+diff --git a/src/cgame/cg_etlab.c b/src/cgame/cg_etlab.c
+new file mode 100644
+index 0000000..c7e3781
+--- /dev/null
++++ b/src/cgame/cg_etlab.c
+@@ -0,0 +1,86 @@
++/*
++ * Wolfenstein: Enemy Territory GPL Source Code
++ * Copyright (C) 1999-2010 id Software LLC, a ZeniMax Media company.
++ *
++ * ET: Legacy
++ * Copyright (C) 2012-2026 ET:Legacy team <mail@etlegacy.com>
++ *
++ * This file is part of ET: Legacy - http://www.etlegacy.com
++ *
++ * ET: Legacy is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * (at your option) any later version.
++ *
++ * ET: Legacy is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with ET: Legacy. If not, see <http://www.gnu.org/licenses/>.
++ */
++/**
++ * @file cg_etlab.c
++ * @brief ETLab round modifiers on the client: configstring parsing and HUD note.
++ */
++
++#include "cg_local.h"
++
++void CG_ETLabModifierChanged(void)
++{
++	const char *info = CG_ConfigString(CS_ETLAB_MODIFIER);
++	int        index = 0, end = 0;
++
++	if (info && info[0])
++	{
++		sscanf(info, "%i %i", &index, &end);
++	}
++	cgs.etlabModifier    = (index > ETLAB_MOD_NONE && index < ETLAB_MOD_COUNT) ? index : ETLAB_MOD_NONE;
++	cgs.etlabModifierEnd = end;
++}
++
++qboolean CG_ETLabModifierActive(int index)
++{
++	return cgs.etlabModifier == index && index != ETLAB_MOD_NONE;
++}
++
++/**
++ * @brief Reinforcement time as the server applies it.
++ */
++int CG_ETLabLimboTime(int base)
++{
++	if (CG_ETLabModifierActive(ETLAB_MOD_FASTSPAWN))
++	{
++		return base >= 2000 ? base / 2 : base;
++	}
++	return base;
++}
++
++/**
++ * @brief Small note below the top of the screen while a modifier is active.
++ */
++void CG_ETLabDrawModifier(void)
++{
++	const char *text;
++	float      scale = 0.19f;
++	vec4_t     color = { 1.f, 0.85f, 0.4f, 0.9f };
++	int        width;
++
++	if (cgs.etlabModifier == ETLAB_MOD_NONE || cg.demoPlayback)
++	{
++		return;
++	}
++	if (cgs.etlabModifierEnd > 0 && cg.time < cgs.etlabModifierEnd)
++	{
++		int seconds = (cgs.etlabModifierEnd - cg.time + 999) / 1000;
++
++		text = va("%s (%i:%02i)", etlabModifiers[cgs.etlabModifier].title, seconds / 60, seconds % 60);
++	}
++	else
++	{
++		text = etlabModifiers[cgs.etlabModifier].title;
++	}
++	width = CG_Text_Width_Ext(text, scale, 0, &cgs.media.limboFont2);
++	CG_Text_Paint_Ext(Ccg_WideX(SCREEN_WIDTH) / 2.f - width / 2.f, 54, scale, scale, color, text, 0, 0, ITEM_TEXTSTYLE_SHADOWED, &cgs.media.limboFont2);
++}
 diff --git a/src/cgame/cg_limbopanel.c b/src/cgame/cg_limbopanel.c
-index 55a8fda9c..facb69251 100644
+index 55a8fda..facb692 100644
 --- a/src/cgame/cg_limbopanel.c
 +++ b/src/cgame/cg_limbopanel.c
 @@ -2627,7 +2627,7 @@ static weapon_t CG_LimboPanel_WeaponPanel_GetSelectableWeaponOption(bg_playercla
@@ -43,8 +165,62 @@ index 55a8fda9c..facb69251 100644
  			{
  				break;
  			}
+diff --git a/src/cgame/cg_local.h b/src/cgame/cg_local.h
+index c71728b..9cd81d2 100644
+--- a/src/cgame/cg_local.h
++++ b/src/cgame/cg_local.h
+@@ -2804,6 +2804,10 @@ typedef struct cgs_s
+ 
+ 	int scoresCount;
+ 	char scores[MAX_SCORES_CMDS][MAX_STRING_CHARS];
++
++	// ETLab round modifier (CS_ETLAB_MODIFIER)
++	int etlabModifier;
++	int etlabModifierEnd;
+ } cgs_t;
+ 
+ //==============================================================================
+@@ -3408,6 +3412,12 @@ void CG_ShaderStateChanged(void);
+ void CG_ChargeTimesChanged(void);
+ void CG_TeamRestrictionsChanged(void);
+ void CG_SkillLevelsChanged(void);
++
++// cg_etlab.c
++void CG_ETLabModifierChanged(void);
++qboolean CG_ETLabModifierActive(int index);
++int CG_ETLabLimboTime(int base);
++void CG_ETLabDrawModifier(void);
+ void CG_LoadVoiceChats(void);
+ void CG_PlayBufferedVoiceChats(void);
+ void CG_AddToTeamChat(const char *str, int clientnum);
+diff --git a/src/cgame/cg_main.c b/src/cgame/cg_main.c
+index 2212fef..a4de08c 100644
+--- a/src/cgame/cg_main.c
++++ b/src/cgame/cg_main.c
+@@ -2267,6 +2267,7 @@ void CG_Init(int serverMessageNum, int serverCommandSequence, int clientNum, qbo
+ 	CG_DemoBackwardsCompatInit();
+ 	CG_ParseWolfinfo();
+ 	CG_ParseServerToggles();
++	CG_ETLabModifierChanged();
+ 
+ 	CG_InitConsoleCommands();
+ 
+diff --git a/src/cgame/cg_servercmds.c b/src/cgame/cg_servercmds.c
+index b20afe0..a6dffaf 100644
+--- a/src/cgame/cg_servercmds.c
++++ b/src/cgame/cg_servercmds.c
+@@ -1054,6 +1054,9 @@ static void CG_ConfigStringModified(void)
+ 	case CS_UPGRADERANGE:
+ 		CG_SkillLevelsChanged();
+ 		break;
++	case CS_ETLAB_MODIFIER:
++		CG_ETLabModifierChanged();
++		break;
+ 	case CS_SKYBOXORG:
+ 		CG_ParseSkyBox();
+ 		break;
 diff --git a/src/game/bg_classes.c b/src/game/bg_classes.c
-index 9902fc3e0..84c00f99b 100644
+index 9902fc3..84c00f9 100644
 --- a/src/game/bg_classes.c
 +++ b/src/game/bg_classes.c
 @@ -59,7 +59,8 @@ bg_playerclass_t bg_playerClasses[2][NUM_PLAYER_CLASSES] =
@@ -211,8 +387,146 @@ index 9902fc3e0..84c00f99b 100644
  		{
  			continue;
  		}
+diff --git a/src/game/bg_etlab.c b/src/game/bg_etlab.c
+new file mode 100644
+index 0000000..dab682e
+--- /dev/null
++++ b/src/game/bg_etlab.c
+@@ -0,0 +1,132 @@
++/*
++ * Wolfenstein: Enemy Territory GPL Source Code
++ * Copyright (C) 1999-2010 id Software LLC, a ZeniMax Media company.
++ *
++ * ET: Legacy
++ * Copyright (C) 2012-2026 ET:Legacy team <mail@etlegacy.com>
++ *
++ * This file is part of ET: Legacy - http://www.etlegacy.com
++ *
++ * ET: Legacy is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * (at your option) any later version.
++ *
++ * ET: Legacy is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with ET: Legacy. If not, see <http://www.gnu.org/licenses/>.
++ */
++/**
++ * @file bg_etlab.c
++ * @brief ETLab round modifiers: shared table and pool parsing for game and cgame.
++ */
++
++#include "../qcommon/q_shared.h"
++#include "bg_public.h"
++
++const etlabModifierInfo_t etlabModifiers[ETLAB_MOD_COUNT] =
++{
++	{ "none",          "No modifier",        "Regular rules.",                                            qfalse },
++	{ "doublexp",      "Double XP",          "All experience points are doubled.",                        qfalse },
++	{ "fastspawn",     "Fast Reinforcements", "Reinforcement time is halved.",                            qfalse },
++	{ "longdyno",      "Long Fuse",          "Dynamite explodes after 45 seconds instead of 30.",         qfalse },
++	{ "quickspot",     "Quick Spotting",     "Binoculars spot enemy landmines twice as fast.",            qfalse },
++	{ "medicshortage", "Medic Shortage",     "At most two medics per team, slower medic charge.",         qfalse },
++	{ "engineerfest",  "Engineer Fest",      "Double landmine limit, faster engineer charge.",            qfalse },
++	{ "heavyfree",     "Heavy Weapons Free", "No team limits for heavy weapons.",                         qfalse },
++	{ "lowammo",       "Low Ammo",           "Spawn with half of the reserve ammunition.",                qfalse },
++	{ "suddendeath",   "Sudden Death",       "No reinforcements during the final two minutes.",           qfalse },
++	{ "classrotation", "Class Rotation",     "Every spawn needs a different class than the last one.",    qfalse },
++	{ "lowgravity",    "Low Gravity",        "Gravity is halved.",                                        qtrue  },
++	{ "sidearms",      "Sidearms Only",      "No primary weapons and no hand grenades.",                  qtrue  },
++	{ "iceskating",    "Ice Skating",        "Faster movement, double knockback.",                        qtrue  },
++	{ "grenaderain",   "Grenade Rain",       "Hand grenades are refilled every 20 seconds.",              qtrue  },
++	{ "headshots",     "Headshots Only",     "Only headshots damage players.",                            qtrue  },
++	{ "vampire",       "Vampire",            "Each kill restores 20 health.",                             qtrue  },
++};
++
++/**
++ * @brief Modifier index for a name; ETLAB_MOD_NONE for "none", -1 for unknown names.
++ */
++int BG_ETLabModifierByName(const char *name)
++{
++	int i;
++
++	if (!name || !name[0])
++	{
++		return -1;
++	}
++	for (i = 0; i < ETLAB_MOD_COUNT; i++)
++	{
++		if (!Q_stricmp(name, etlabModifiers[i].name))
++		{
++			return i;
++		}
++	}
++	return -1;
++}
++
++/**
++ * @brief Whether a modifier is part of a pool string ("all" or names separated by spaces/commas/semicolons).
++ */
++qboolean BG_ETLabModifierInPool(const char *pool, int index)
++{
++	char token[64];
++	int  length;
++
++	if (index <= ETLAB_MOD_NONE || index >= ETLAB_MOD_COUNT || !pool)
++	{
++		return qfalse;
++	}
++	while (*pool)
++	{
++		while (*pool == ' ' || *pool == ',' || *pool == ';' || *pool == '\t')
++		{
++			pool++;
++		}
++		length = 0;
++		while (*pool && *pool != ' ' && *pool != ',' && *pool != ';' && *pool != '\t')
++		{
++			if (length < (int)sizeof(token) - 1)
++			{
++				token[length++] = *pool;
++			}
++			pool++;
++		}
++		token[length] = '\0';
++		if (!length)
++		{
++			continue;
++		}
++		if (!Q_stricmp(token, "all") || !Q_stricmp(token, etlabModifiers[index].name))
++		{
++			return qtrue;
++		}
++	}
++	return qfalse;
++}
++
++/**
++ * @brief Number of pool members; fills indexes when a buffer of ETLAB_MOD_COUNT entries is given.
++ */
++int BG_ETLabModifierPoolList(const char *pool, int *indexes)
++{
++	int i, count = 0;
++
++	for (i = ETLAB_MOD_NONE + 1; i < ETLAB_MOD_COUNT; i++)
++	{
++		if (BG_ETLabModifierInPool(pool, i))
++		{
++			if (indexes)
++			{
++				indexes[count] = i;
++			}
++			count++;
++		}
++	}
++	return count;
++}
 diff --git a/src/game/bg_pmove.c b/src/game/bg_pmove.c
-index d4164bc9e..cda79cad9 100644
+index d4164bc..cda79ca 100644
 --- a/src/game/bg_pmove.c
 +++ b/src/game/bg_pmove.c
 @@ -4087,6 +4087,13 @@ static void PM_Weapon(void)
@@ -230,20 +544,119 @@ index d4164bc9e..cda79cad9 100644
  
  #ifdef CGAMEDLL
 diff --git a/src/game/bg_public.h b/src/game/bg_public.h
-index ebdba6d25..42d418c5c 100644
+index ebdba6d..d48ee7b 100644
 --- a/src/game/bg_public.h
 +++ b/src/game/bg_public.h
-@@ -2659,6 +2659,8 @@ bg_playerclass_t *BG_GetPlayerClassInfo(int team, int cls);
+@@ -420,6 +420,7 @@ extern const int aReinfSeeds[MAX_REINFSEEDS];
+ 
+ #define CS_TEAMRESTRICTIONS             43     ///< Class restrictions have been changed
+ #define CS_UPGRADERANGE                 44     ///< Upgrade range levels have been changed
++#define CS_ETLAB_MODIFIER               45     ///< ETLab round modifier: "index endTime"
+ 
+ #define CS_MODELS                       64
+ #define CS_SOUNDS                       (CS_MODELS +               MAX_MODELS)              ///< 320 (256)
+@@ -2659,6 +2660,52 @@ bg_playerclass_t *BG_GetPlayerClassInfo(int team, int cls);
  bg_playerclass_t *BG_PlayerClassForPlayerState(playerState_t *ps);
  qboolean BG_ClassHasWeapon(bg_playerclass_t *classInfo, weapon_t weap);
  qboolean BG_WeaponIsPrimaryForClassAndTeam(int classnum, team_t team, weapon_t weapon);
 +weapon_t BG_HeavyLoadoutAkimbo(int classNum, team_t team, weapon_t primaryWeapon);
 +qboolean BG_IsSecondaryWeaponAvailable(bg_playerclass_t *classInfo, team_t team, weapon_t primaryWeapon, int index, int *skills);
++
++// ETLab round modifiers (bg_etlab.c): shared by game and cgame.
++typedef enum
++{
++	ETLAB_MOD_NONE = 0,
++	ETLAB_MOD_DOUBLEXP,
++	ETLAB_MOD_FASTSPAWN,
++	ETLAB_MOD_LONGDYNO,
++	ETLAB_MOD_QUICKSPOT,
++	ETLAB_MOD_MEDICSHORTAGE,
++	ETLAB_MOD_ENGINEERFEST,
++	ETLAB_MOD_HEAVYFREE,
++	ETLAB_MOD_LOWAMMO,
++	ETLAB_MOD_SUDDENDEATH,
++	ETLAB_MOD_CLASSROTATION,
++	ETLAB_MOD_LOWGRAVITY,
++	ETLAB_MOD_SIDEARMS,
++	ETLAB_MOD_ICESKATING,
++	ETLAB_MOD_GRENADERAIN,
++	ETLAB_MOD_HEADSHOTS,
++	ETLAB_MOD_VAMPIRE,
++	ETLAB_MOD_COUNT
++} etlabModifier_t;
++
++typedef enum
++{
++	ETLAB_MODE_OFF = 0,
++	ETLAB_MODE_RANDOM,
++	ETLAB_MODE_VOTE,
++	ETLAB_MODE_RANDOM_VOTE
++} etlabModifierMode_t;
++
++typedef struct
++{
++	const char *name;
++	const char *title;
++	const char *description;
++	qboolean gaudi; ///< short-lived fun modifier
++} etlabModifierInfo_t;
++
++extern const etlabModifierInfo_t etlabModifiers[ETLAB_MOD_COUNT];
++int BG_ETLabModifierByName(const char *name);
++qboolean BG_ETLabModifierInPool(const char *pool, int index);
++int BG_ETLabModifierPoolList(const char *pool, int *indexes);
  weapon_t BG_GetBestSecondaryWeapon(int classNum, team_t team, weapon_t primaryWeapon, int *skills);
  int BG_ClassWeaponCount(bg_playerclass_t *classInfo, team_t team);
  const char *BG_ShortClassnameForNumber(int classNum);
+diff --git a/src/game/g_active.c b/src/game/g_active.c
+index a81601a..e1f347b 100644
+--- a/src/game/g_active.c
++++ b/src/game/g_active.c
+@@ -1389,9 +1389,17 @@ void ClientThink_real(gentity_t *ent)
+ 
+ 	client->ps.aiState = AISTATE_COMBAT;
+ 	client->ps.gravity = g_gravity.value;
++	if (G_ETLabModifierActive(ETLAB_MOD_LOWGRAVITY))
++	{
++		client->ps.gravity *= 0.5f;
++	}
+ 
+ 	// set speed
+ 	client->ps.speed = g_speed.value;
++	if (G_ETLabModifierActive(ETLAB_MOD_ICESKATING))
++	{
++		client->ps.speed *= 1.4f;
++	}
+ 
+ 	if (client->speedScale)                  // Goalitem speed scale
+ 	{
+@@ -1838,13 +1846,13 @@ void SpectatorClientEndFrame(gentity_t *ent)
+ 		}
+ 		else if (ent->client->sess.sessionTeam == TEAM_AXIS)
+ 		{
+-			testtime                            = (level.dwRedReinfOffset + level.timeCurrent - level.startTime) % g_redlimbotime.integer;
++			testtime                            = (level.dwRedReinfOffset + level.timeCurrent - level.startTime) % G_ETLabLimboTime(g_redlimbotime.integer);
+ 			do_respawn                          = (testtime < ent->client->pers.lastReinforceTime);
+ 			ent->client->pers.lastReinforceTime = testtime;
+ 		}
+ 		else if (ent->client->sess.sessionTeam == TEAM_ALLIES)
+ 		{
+-			testtime                            = (level.dwBlueReinfOffset + level.timeCurrent - level.startTime) % g_bluelimbotime.integer;
++			testtime                            = (level.dwBlueReinfOffset + level.timeCurrent - level.startTime) % G_ETLabLimboTime(g_bluelimbotime.integer);
+ 			do_respawn                          = (testtime < ent->client->pers.lastReinforceTime);
+ 			ent->client->pers.lastReinforceTime = testtime;
+ 		}
+@@ -1887,7 +1895,7 @@ void SpectatorClientEndFrame(gentity_t *ent)
+ 			}
+ 		}
+ 
+-		if (do_respawn)
++		if (do_respawn && !G_ETLabRespawnBlocked())
+ 		{
+ 			reinforce(ent);
+ 			return;
 diff --git a/src/game/g_client.c b/src/game/g_client.c
-index 084617b25..10afbe624 100644
+index 084617b..535bc5d 100644
 --- a/src/game/g_client.c
 +++ b/src/game/g_client.c
 @@ -1317,6 +1317,10 @@ void SetWolfSpawnWeapons(gclient_t *client)
@@ -292,7 +705,39 @@ index 084617b25..10afbe624 100644
  	//
  	// special weapons and items
  	//
-@@ -3474,6 +3489,11 @@ void ClientSpawn(gentity_t *ent, qboolean revived, qboolean teamChange, qboolean
+@@ -1374,6 +1389,9 @@ void SetWolfSpawnWeapons(gclient_t *client)
+ 			AddWeaponToPlayer(client, weaponClassInfo->weapon, weaponClassInfo->startingAmmo, weaponClassInfo->startingClip, qfalse);
+ 		}
+ 	}
++
++	// ETLab round modifiers: Sidearms Only, Low Ammo
++	G_ETLabModifierSpawnWeapons(client);
+ }
+ 
+ /**
+@@ -2857,6 +2875,8 @@ void ClientBegin(int clientNum)
+ 
+ 	G_LogPrintf("ClientBegin: %i\n", clientNum);
+ 
++	G_ETLabModifierClientBegin(ent);
++
+ 	// Check for maxlives enforcement
+ 	if (g_gametype.integer != GT_WOLF_LMS)
+ 	{
+@@ -3271,6 +3291,12 @@ void ClientSpawn(gentity_t *ent, qboolean revived, qboolean teamChange, qboolean
+ 
+ 		client->sess.playerType = client->sess.latchPlayerType;
+ 
++		// ETLab Class Rotation may switch to the next class
++		if (G_ETLabRotateClass(client))
++		{
++			update = qtrue;
++		}
++
+ 		if (G_IsWeaponDisabled(ent, client->sess.latchPlayerWeapon))
+ 		{
+ 			bg_playerclass_t *classInfo;
+@@ -3474,6 +3500,11 @@ void ClientSpawn(gentity_t *ent, qboolean revived, qboolean teamChange, qboolean
  	// clear entity state values
  	BG_PlayerStateToEntityState(&client->ps, &ent->s, level.time, qfalse);
  
@@ -305,10 +750,36 @@ index 084617b25..10afbe624 100644
  
  	// start the scripting system
 diff --git a/src/game/g_cmds.c b/src/game/g_cmds.c
-index 31f829b8d..ca180f6e5 100644
+index 31f829b..f676131 100644
 --- a/src/game/g_cmds.c
 +++ b/src/game/g_cmds.c
-@@ -5345,6 +5345,12 @@ void ClientCommand(int clientNum)
+@@ -1924,6 +1924,12 @@ qboolean G_IsWeaponDisabled(gentity_t *ent, weapon_t weapon)
+ 		return qtrue;
+ 	}
+ 
++	// ETLab Heavy Weapons Free: no team limits
++	if (G_ETLabModifierActive(ETLAB_MOD_HEAVYFREE))
++	{
++		return qfalse;
++	}
++
+ 	if (!(GetWeaponTableData(weapon)->skillBased == SK_HEAVY_WEAPONS || (GetWeaponTableData(weapon)->type & WEAPON_TYPE_RIFLENADE)
+ 	      || (GetWeaponTableData(GetWeaponTableData(weapon)->weapAlts)->type & WEAPON_TYPE_RIFLENADE)))
+ 	{
+@@ -2126,6 +2132,12 @@ qboolean G_IsClassFull(gentity_t *ent, int playerType, team_t team)
+ 		}
+ 		break;
+ 	case PC_MEDIC:
++		// ETLab Medic Shortage: hard limit of two medics per team
++		if (G_ETLabModifierActive(ETLAB_MOD_MEDICSHORTAGE) && count >= 2)
++		{
++			CP("cp \"^1Medic^7 is not available! Choose another class!\n\"");
++			return qtrue;
++		}
+ 		if (team_maxMedics.integer == -1)
+ 		{
+ 			break;
+@@ -5345,6 +5357,12 @@ void ClientCommand(int clientNum)
  	}
  #endif
  
@@ -322,10 +793,28 @@ index 31f829b8d..ca180f6e5 100644
  	{
  		return;
 diff --git a/src/game/g_combat.c b/src/game/g_combat.c
-index 576d8fa7f..9138d9b1c 100644
+index 576d8fa..fcedd3f 100644
 --- a/src/game/g_combat.c
 +++ b/src/game/g_combat.c
-@@ -1551,9 +1551,11 @@ void G_DamageExt(gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, vec
+@@ -503,6 +503,9 @@ void player_die(gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int
+ 		}
+ 	}
+ 
++	// ETLab Vampire
++	G_ETLabModifierOnKill(self, attacker);
++
+ 	// this is used for G_DropLimboHealth()/G_DropLimboAmmo()
+ 	if (!self->client->deathTime)
+ 	{
+@@ -1434,6 +1437,7 @@ void G_DamageExt(gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, vec
+ 	qboolean    wasAlive, onSameTeam;
+ 	hitRegion_t hr           = HR_NUM_HITREGIONS;
+ 	int         hitEventType = HIT_NONE;
++	qboolean    etlabHeadShot = qfalse;
+ 
+ 	if (hitEventOut)
+ 	{
+@@ -1551,9 +1555,11 @@ void G_DamageExt(gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, vec
  	case ET_MISSILE:
  		if (targ->methodOfDeath == MOD_LANDMINE)
  		{
@@ -339,23 +828,606 @@ index 576d8fa7f..9138d9b1c 100644
  				{
  					mapEntityData_t *mEnt;
  
+@@ -1696,7 +1702,7 @@ void G_DamageExt(gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, vec
+ 		}
+ 	}
+ 
+-	if (IsHeadShot(targ, dir, point, mod, &refent, qtrue))
++	if ((etlabHeadShot = IsHeadShot(targ, dir, point, mod, &refent, qtrue)))
+ 	{
+ 		// FIXME: also when damage is 0 ?
+ 		// head shots, all weapons, do minimum 50 points damage
+@@ -1792,6 +1798,12 @@ void G_DamageExt(gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, vec
+ 		}
+ 	}
+ 
++	// ETLab Headshots Only: players only hurt players with headshots; knockback stays
++	if (!etlabHeadShot && targ->client && attacker && attacker->client && attacker != targ && G_ETLabModifierActive(ETLAB_MOD_HEADSHOTS))
++	{
++		take = 0;
++	}
++
+ 	if (g_antilag.integer)
+ 	{
+ 		// re-adjust now because we are changing eFlags and pm_flags
+@@ -1805,6 +1817,10 @@ void G_DamageExt(gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, vec
+ 		vec3_t kvel;
+ 		float  mass = 200;
+ 
++		if (G_ETLabModifierActive(ETLAB_MOD_ICESKATING))
++		{
++			mass *= 0.5f;
++		}
+ 		VectorScale(dir, g_knockback.value * (float)knockback / mass, kvel);
+ 		VectorAdd(targ->client->ps.velocity, kvel, targ->client->ps.velocity);
+ 
+diff --git a/src/game/g_cvars.c b/src/game/g_cvars.c
+index eb66d25..a2bb60b 100644
+--- a/src/game/g_cvars.c
++++ b/src/game/g_cvars.c
+@@ -269,6 +269,12 @@ vmCvar_t team_maxMachineguns;
+ vmCvar_t team_maxRockets;
+ vmCvar_t team_maxRiflegrenades;
+ vmCvar_t team_maxLandmines;
++
++// ETLab round modifiers
++vmCvar_t g_etlabModifierPool;
++vmCvar_t g_etlabModifierMode;
++vmCvar_t g_etlabModifierMinutes;
++vmCvar_t etlab_modifier;
+ // misc
+ vmCvar_t team_riflegrenades;
+ // skills
+@@ -616,6 +622,12 @@ cvarTable_t gameCvarTable[] =
+ 	{ &team_maxRockets,                   "team_maxRockets",                   "-1",                         0,                                               0, qfalse, qfalse },
+ 	{ &team_maxRiflegrenades,             "team_maxRiflegrenades",             "-1",                         0,                                               0, qfalse, qfalse },
+ 	{ &team_maxLandmines,                 "team_maxLandmines",                 "10",                         0,                                               0, qfalse, qfalse },
++
++	// ETLab round modifiers
++	{ &g_etlabModifierPool,               "g_etlabModifierPool",               "",                           0,                                               0, qfalse, qfalse },
++	{ &g_etlabModifierMode,               "g_etlabModifierMode",               "0",                          0,                                               0, qfalse, qfalse },
++	{ &g_etlabModifierMinutes,            "g_etlabModifierMinutes",            "5",                          0,                                               0, qfalse, qfalse },
++	{ &etlab_modifier,                    "etlab_modifier",                    "",                           0,                                               0, qfalse, qfalse },
+ 	//misc
+ 	{ &team_riflegrenades,                "team_riflegrenades",                "1",                          0,                                               0, qfalse, qfalse },
+ 	//skills
+diff --git a/src/game/g_cvars.h b/src/game/g_cvars.h
+index a4b0bee..e445b3a 100644
+--- a/src/game/g_cvars.h
++++ b/src/game/g_cvars.h
+@@ -258,6 +258,12 @@ extern vmCvar_t team_maxMachineguns;
+ extern vmCvar_t team_maxRockets;
+ extern vmCvar_t team_maxRiflegrenades;
+ extern vmCvar_t team_maxLandmines;
++
++// ETLab round modifiers
++extern vmCvar_t g_etlabModifierPool;
++extern vmCvar_t g_etlabModifierMode;
++extern vmCvar_t g_etlabModifierMinutes;
++extern vmCvar_t etlab_modifier;
+ // misc
+ extern vmCvar_t team_riflegrenades;
+ // skills
+diff --git a/src/game/g_etlab.c b/src/game/g_etlab.c
+new file mode 100644
+index 0000000..e1b0076
+--- /dev/null
++++ b/src/game/g_etlab.c
+@@ -0,0 +1,460 @@
++/*
++ * Wolfenstein: Enemy Territory GPL Source Code
++ * Copyright (C) 1999-2010 id Software LLC, a ZeniMax Media company.
++ *
++ * ET: Legacy
++ * Copyright (C) 2012-2026 ET:Legacy team <mail@etlegacy.com>
++ *
++ * This file is part of ET: Legacy - http://www.etlegacy.com
++ *
++ * ET: Legacy is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * (at your option) any later version.
++ *
++ * ET: Legacy is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with ET: Legacy. If not, see <http://www.gnu.org/licenses/>.
++ */
++/**
++ * @file g_etlab.c
++ * @brief ETLab round modifiers: selection, lifetime and server-side rule hooks.
++ *
++ * g_etlabModifierPool lists the modifiers that may be chosen ("all" or names).
++ * g_etlabModifierMode: 0 off, 1 random per map, 2 vote only, 3 random with vote override.
++ * Short-lived ("gaudi") modifiers end g_etlabModifierMinutes after the match starts.
++ */
++
++#include "g_local.h"
++
++#define ETLAB_GAUDI_DEFAULT_MINUTES 5
++#define ETLAB_SUDDEN_DEATH_WINDOW   120000
++#define ETLAB_GRENADE_INTERVAL      20000
++#define ETLAB_VAMPIRE_HEAL          20
++
++// g_vote.c helpers without a public prototype
++qboolean G_voteDescription(gentity_t *ent, qboolean fRefereeCmd, unsigned int cmd);
++void G_voteCurrentSetting(gentity_t *ent, const char *cmd, const char *setting);
++
++static const char *G_ETLabModifierName(int index)
++{
++	return (index > ETLAB_MOD_NONE && index < ETLAB_MOD_COUNT) ? etlabModifiers[index].name : "none";
++}
++
++qboolean G_ETLabModifierActive(int index)
++{
++	return level.etlabModifier == index && index != ETLAB_MOD_NONE;
++}
++
++static qboolean G_ETLabModifierIsGaudi(int index)
++{
++	return index > ETLAB_MOD_NONE && index < ETLAB_MOD_COUNT && etlabModifiers[index].gaudi;
++}
++
++static int G_ETLabGaudiDuration(void)
++{
++	int minutes = g_etlabModifierMinutes.integer > 0 ? g_etlabModifierMinutes.integer : ETLAB_GAUDI_DEFAULT_MINUTES;
++
++	return minutes * 60000;
++}
++
++static void G_ETLabModifierUpdateConfigstring(void)
++{
++	trap_SetConfigstring(CS_ETLAB_MODIFIER, va("%i %i", level.etlabModifier, level.etlabModifierEnd));
++}
++
++/**
++ * @brief Medic/engineer charge times with the modifier factor, mirrored to the client configstring.
++ */
++void G_ETLabApplyChargeTimes(void)
++{
++	float medic    = G_ETLabModifierActive(ETLAB_MOD_MEDICSHORTAGE) ? 1.5f : 1.f;
++	float engineer = G_ETLabModifierActive(ETLAB_MOD_ENGINEERFEST) ? 0.5f : 1.f;
++	char  cs[MAX_INFO_STRING];
++	int   team;
++
++	for (team = 0; team < 2; team++)
++	{
++		level.medicChargeTime[team]    = g_medicChargeTime.integer * level.medicChargeTimeModifier[team] * medic;
++		level.engineerChargeTime[team] = g_engineerChargeTime.integer * level.engineerChargeTimeModifier[team] * engineer;
++	}
++
++	cs[0] = '\0';
++	Info_SetValueForKey(cs, "x0", va("%i", level.soldierChargeTime[0]));
++	Info_SetValueForKey(cs, "a0", va("%i", level.soldierChargeTime[1]));
++	Info_SetValueForKey(cs, "x1", va("%i", level.medicChargeTime[0]));
++	Info_SetValueForKey(cs, "a1", va("%i", level.medicChargeTime[1]));
++	Info_SetValueForKey(cs, "x2", va("%i", level.engineerChargeTime[0]));
++	Info_SetValueForKey(cs, "a2", va("%i", level.engineerChargeTime[1]));
++	Info_SetValueForKey(cs, "x3", va("%i", level.fieldopsChargeTime[0]));
++	Info_SetValueForKey(cs, "a3", va("%i", level.fieldopsChargeTime[1]));
++	Info_SetValueForKey(cs, "x4", va("%i", level.covertopsChargeTime[0]));
++	Info_SetValueForKey(cs, "a4", va("%i", level.covertopsChargeTime[1]));
++	trap_SetConfigstring(CS_CHARGETIMES, cs);
++}
++
++static void G_ETLabModifierAnnounce(gentity_t *ent, int index)
++{
++	int clientNum = ent ? (int)(ent - g_entities) : -1;
++
++	if (index == ETLAB_MOD_NONE)
++	{
++		trap_SendServerCommand(clientNum, "cpm \"^3Round modifier: ^5none\n\"");
++		return;
++	}
++	trap_SendServerCommand(clientNum, va("cpm \"^3Round modifier: ^5%s^7 - %s\n\"", etlabModifiers[index].title, etlabModifiers[index].description));
++	if (G_ETLabModifierIsGaudi(index))
++	{
++		trap_SendServerCommand(clientNum, va("print \"^3Round modifier ^5%s^3 lasts %i minutes after the match starts.\n\"", etlabModifiers[index].title, G_ETLabGaudiDuration() / 60000));
++	}
++}
++
++/**
++ * @brief Activates a modifier for the current map; announce broadcasts the change.
++ */
++void G_ETLabModifierSet(int index, qboolean announce)
++{
++	if (index < ETLAB_MOD_NONE || index >= ETLAB_MOD_COUNT)
++	{
++		index = ETLAB_MOD_NONE;
++	}
++	level.etlabModifier          = index;
++	level.etlabModifierEnd       = 0;
++	level.etlabModifierNextTick  = 0;
++	level.etlabSuddenDeathWarned = qfalse;
++	trap_Cvar_Set("etlab_modifier", G_ETLabModifierName(index));
++	G_ETLabApplyChargeTimes();
++	G_ETLabModifierUpdateConfigstring();
++	G_LogPrintf("ETLAB_MODIFIER: %s\n", G_ETLabModifierName(index));
++	if (announce)
++	{
++		G_ETLabModifierAnnounce(NULL, index);
++	}
++}
++
++/**
++ * @brief Map start: keep the modifier across map_restart, otherwise choose according to the mode.
++ */
++void G_ETLabModifierInit(qboolean restart)
++{
++	int index = ETLAB_MOD_NONE;
++
++	if (g_etlabModifierMode.integer != ETLAB_MODE_OFF)
++	{
++		if (restart)
++		{
++			char saved[64];
++
++			trap_Cvar_VariableStringBuffer("etlab_modifier", saved, sizeof(saved));
++			index = BG_ETLabModifierByName(saved);
++			if (index < 0 || !BG_ETLabModifierInPool(g_etlabModifierPool.string, index))
++			{
++				index = ETLAB_MOD_NONE;
++			}
++		}
++		else if (g_etlabModifierMode.integer == ETLAB_MODE_RANDOM || g_etlabModifierMode.integer == ETLAB_MODE_RANDOM_VOTE)
++		{
++			int pool[ETLAB_MOD_COUNT];
++			int count = BG_ETLabModifierPoolList(g_etlabModifierPool.string, pool);
++
++			if (count > 0)
++			{
++				index = pool[rand() % count];
++			}
++		}
++	}
++	G_ETLabModifierSet(index, qfalse);
++}
++
++/**
++ * @brief Per-frame lifetime handling: start/stop of short modifiers, timed effects, warnings.
++ */
++void G_ETLabModifierFrame(void)
++{
++	int index = level.etlabModifier;
++
++	if (index == ETLAB_MOD_NONE)
++	{
++		return;
++	}
++
++	if (g_gamestate.integer != GS_PLAYING)
++	{
++		return;
++	}
++
++	if (G_ETLabModifierIsGaudi(index))
++	{
++		if (!level.etlabModifierEnd)
++		{
++			level.etlabModifierEnd = level.time + G_ETLabGaudiDuration();
++			G_ETLabModifierUpdateConfigstring();
++			G_ETLabModifierAnnounce(NULL, index);
++		}
++		else if (level.time >= level.etlabModifierEnd)
++		{
++			// Expired for this round only; the saved cvar restores it after a map_restart.
++			level.etlabModifier    = ETLAB_MOD_NONE;
++			level.etlabModifierEnd = 0;
++			G_ETLabApplyChargeTimes();
++			G_ETLabModifierUpdateConfigstring();
++			AP(va("cpm \"^3Round modifier ^5%s^3 has ended. Regular rules again.\n\"", etlabModifiers[index].title));
++			G_LogPrintf("ETLAB_MODIFIER_END: %s\n", etlabModifiers[index].name);
++			return;
++		}
++	}
++
++	if (index == ETLAB_MOD_GRENADERAIN && level.time >= level.etlabModifierNextTick)
++	{
++		int i;
++
++		level.etlabModifierNextTick = level.time + ETLAB_GRENADE_INTERVAL;
++		for (i = 0; i < level.numConnectedClients; i++)
++		{
++			gentity_t        *ent = &g_entities[level.sortedClients[i]];
++			bg_playerclass_t *classInfo;
++			weapon_t         grenade;
++
++			if (!ent->inuse || !ent->client || ent->health <= 0 || (ent->client->ps.pm_flags & PMF_LIMBO) ||
++			    (ent->client->sess.sessionTeam != TEAM_AXIS && ent->client->sess.sessionTeam != TEAM_ALLIES))
++			{
++				continue;
++			}
++			classInfo = BG_GetPlayerClassInfo(ent->client->sess.sessionTeam, ent->client->sess.playerType);
++			grenade   = classInfo->classGrenadeWeapon.weapon;
++			if (grenade && COM_BitCheck(ent->client->ps.weapons, grenade))
++			{
++				// grenades live in the reserve and are moved into the clip one at a time
++				int max  = BG_MaxAmmoForWeapon(grenade, ent->client->sess.skill, ent->client->sess.playerType);
++				int clip = ent->client->ps.ammoclip[GetWeaponTableData(grenade)->clipIndex];
++
++				if (ent->client->ps.ammo[GetWeaponTableData(grenade)->ammoIndex] + clip < max)
++				{
++					ent->client->ps.ammo[GetWeaponTableData(grenade)->ammoIndex] = max - clip;
++				}
++			}
++		}
++	}
++
++	if (index == ETLAB_MOD_SUDDENDEATH && !level.etlabSuddenDeathWarned && G_ETLabRespawnBlocked())
++	{
++		level.etlabSuddenDeathWarned = qtrue;
++		AP("cpm \"^1Sudden Death: ^7no more reinforcements until the round ends!\n\"");
++	}
++}
++
++/**
++ * @brief Tell a newly joined client which modifier is active.
++ */
++void G_ETLabModifierClientBegin(gentity_t *ent)
++{
++	if (level.etlabModifier != ETLAB_MOD_NONE && ent && ent->client && !(ent->r.svFlags & SVF_BOT))
++	{
++		G_ETLabModifierAnnounce(ent, level.etlabModifier);
++	}
++}
++
++int G_ETLabLimboTime(int base)
++{
++	if (G_ETLabModifierActive(ETLAB_MOD_FASTSPAWN))
++	{
++		return base >= 2000 ? base / 2 : base;
++	}
++	return base;
++}
++
++int G_ETLabDynamiteFuse(void)
++{
++	return G_ETLabModifierActive(ETLAB_MOD_LONGDYNO) ? 45000 : 30000;
++}
++
++int G_ETLabTeamMaxLandmines(void)
++{
++	if (G_ETLabModifierActive(ETLAB_MOD_ENGINEERFEST) && team_maxLandmines.integer > 0)
++	{
++		return team_maxLandmines.integer * 2;
++	}
++	return team_maxLandmines.integer;
++}
++
++/**
++ * @brief Sudden Death: reinforcements stop within the final two minutes of a timelimit.
++ */
++qboolean G_ETLabRespawnBlocked(void)
++{
++	int remaining;
++
++	if (!G_ETLabModifierActive(ETLAB_MOD_SUDDENDEATH) || g_gamestate.integer != GS_PLAYING || g_timelimit.value <= 0.f)
++	{
++		return qfalse;
++	}
++	remaining = (int)(g_timelimit.value * 60000) - (level.timeCurrent - level.startTime);
++	return remaining <= ETLAB_SUDDEN_DEATH_WINDOW;
++}
++
++/**
++ * @brief Spawn loadout adjustments after the regular loadout has been assigned.
++ */
++void G_ETLabModifierSpawnWeapons(gclient_t *client)
++{
++	int i;
++
++	if (client->sess.sessionTeam != TEAM_AXIS && client->sess.sessionTeam != TEAM_ALLIES)
++	{
++		return;
++	}
++
++	if (G_ETLabModifierActive(ETLAB_MOD_SIDEARMS))
++	{
++		const int strip = WEAPON_TYPE_SMG | WEAPON_TYPE_RIFLE | WEAPON_TYPE_GRENADE | WEAPON_TYPE_RIFLENADE |
++		                  WEAPON_TYPE_MORTAR | WEAPON_TYPE_MG | WEAPON_TYPE_PANZER | WEAPON_TYPE_BEAM;
++
++		for (i = WP_NONE + 1; i < WP_NUM_WEAPONS; i++)
++		{
++			if (COM_BitCheck(client->ps.weapons, i) && (GetWeaponTableData(i)->type & strip))
++			{
++				COM_BitClear(client->ps.weapons, i);
++			}
++		}
++		if (!COM_BitCheck(client->ps.weapons, client->ps.weapon))
++		{
++			client->ps.weapon = WP_KNIFE;
++			for (i = WP_NONE + 1; i < WP_NUM_WEAPONS; i++)
++			{
++				if (COM_BitCheck(client->ps.weapons, i) && (GetWeaponTableData(i)->type & WEAPON_TYPE_PISTOL))
++				{
++					client->ps.weapon = i;
++					break;
++				}
++			}
++		}
++	}
++
++	if (G_ETLabModifierActive(ETLAB_MOD_LOWAMMO))
++	{
++		// halve the reserve of every weapon except hand grenades, which already come in ones
++		for (i = WP_NONE + 1; i < WP_NUM_WEAPONS; i++)
++		{
++			if (COM_BitCheck(client->ps.weapons, i) && !(GetWeaponTableData(i)->type & WEAPON_TYPE_GRENADE) &&
++			    GetWeaponTableData(i)->ammoIndex == i)
++			{
++				client->ps.ammo[i] /= 2;
++			}
++		}
++	}
++}
++
++/**
++ * @brief Class Rotation: a respawn with the previous class switches to the next class.
++ * @return qtrue when the session loadout was changed and userinfo needs an update.
++ */
++qboolean G_ETLabRotateClass(gclient_t *client)
++{
++	qboolean changed = qfalse;
++
++	if (client->sess.sessionTeam != TEAM_AXIS && client->sess.sessionTeam != TEAM_ALLIES)
++	{
++		return qfalse;
++	}
++	if (G_ETLabModifierActive(ETLAB_MOD_CLASSROTATION) && client->pers.etlabLastSpawnClass &&
++	    client->sess.playerType == client->pers.etlabLastSpawnClass - 1)
++	{
++		bg_playerclass_t *classInfo;
++		int              next = (client->sess.playerType + 1) % NUM_PLAYER_CLASSES;
++
++		client->sess.playerType = client->sess.latchPlayerType = next;
++		classInfo               = BG_GetPlayerClassInfo(client->sess.sessionTeam, next);
++		client->sess.playerWeapon = client->sess.latchPlayerWeapon = classInfo->classPrimaryWeapons[0].weapon;
++		client->sess.playerWeapon2 = client->sess.latchPlayerWeapon2 = classInfo->classSecondaryWeapons[0].weapon;
++		trap_SendServerCommand(client->ps.clientNum, va("cp \"^3Class Rotation: ^7you spawn as ^5%s^7 this time.\" 1", BG_ClassnameForNumber(next)));
++		changed = qtrue;
++	}
++	client->pers.etlabLastSpawnClass = client->sess.playerType + 1;
++	return changed;
++}
++
++/**
++ * @brief Vampire: an enemy kill restores health to the attacker.
++ */
++void G_ETLabModifierOnKill(gentity_t *victim, gentity_t *attacker)
++{
++	if (!G_ETLabModifierActive(ETLAB_MOD_VAMPIRE) || !attacker || !attacker->client || attacker == victim ||
++	    attacker->health <= 0 || OnSameTeam(victim, attacker))
++	{
++		return;
++	}
++	attacker->health = MIN(attacker->health + ETLAB_VAMPIRE_HEAL, attacker->client->ps.stats[STAT_MAX_HEALTH]);
++	attacker->client->ps.stats[STAT_HEALTH] = attacker->health;
++}
++
++static void G_ETLabModifierList(gentity_t *ent)
++{
++	int i;
++
++	G_refPrintf(ent, "\nAvailable round modifiers (g_etlabModifierPool):\n------------------------------");
++	for (i = ETLAB_MOD_NONE + 1; i < ETLAB_MOD_COUNT; i++)
++	{
++		if (BG_ETLabModifierInPool(g_etlabModifierPool.string, i))
++		{
++			G_refPrintf(ent, "  %-14s ^3%s^7 - %s%s", etlabModifiers[i].name, etlabModifiers[i].title,
++			            etlabModifiers[i].description, etlabModifiers[i].gaudi ? " (timed)" : "");
++		}
++	}
++	G_refPrintf(ent, "  %-14s ^3%s", "none", "Regular rules");
++}
++
++/**
++ * @brief callvote modifier <name|none>
++ */
++int G_ETLabModifier_v(gentity_t *ent, unsigned int dwVoteIndex, char *arg, char *arg2, qboolean fRefereeCmd)
++{
++	// Vote request (vote is being initiated)
++	if (arg)
++	{
++		int      index;
++		qboolean referee = ent && ent->client && ent->client->sess.referee;
++
++		if (g_etlabModifierMode.integer != ETLAB_MODE_VOTE && g_etlabModifierMode.integer != ETLAB_MODE_RANDOM_VOTE && !referee)
++		{
++			G_refPrintf(ent, "^3Round modifier votes are not enabled on this server (g_etlabModifierMode %i).", g_etlabModifierMode.integer);
++			G_voteCurrentSetting(ent, arg, G_ETLabModifierName(level.etlabModifier));
++			return G_INVALID;
++		}
++		else if (G_voteDescription(ent, fRefereeCmd, dwVoteIndex))
++		{
++			G_ETLabModifierList(ent);
++			G_voteCurrentSetting(ent, arg, G_ETLabModifierName(level.etlabModifier));
++			return G_INVALID;
++		}
++
++		index = BG_ETLabModifierByName(arg2);
++		if (index < 0 || (index != ETLAB_MOD_NONE && !BG_ETLabModifierInPool(g_etlabModifierPool.string, index)))
++		{
++			G_refPrintf(ent, "\n^3Unknown or unavailable round modifier: ^7%s", arg2);
++			G_ETLabModifierList(ent);
++			return G_INVALID;
++		}
++		if (index == level.etlabModifier)
++		{
++			G_refPrintf(ent, "\n^3Round modifier^5 is already %s!", G_ETLabModifierName(index));
++			return G_INVALID;
++		}
++
++		Com_sprintf(level.voteInfo.vote_value, VOTE_MAXSTRING, "%s", G_ETLabModifierName(index));
++		Com_sprintf(arg2, VOTE_MAXSTRING, "%s", index == ETLAB_MOD_NONE ? "none" : etlabModifiers[index].title);
++
++		// Vote action (vote has passed)
++	}
++	else
++	{
++		int index = BG_ETLabModifierByName(level.voteInfo.vote_value);
++
++		G_ETLabModifierSet(index < 0 ? ETLAB_MOD_NONE : index, qtrue);
++	}
++
++	return G_OK;
++}
 diff --git a/src/game/g_local.h b/src/game/g_local.h
-index 83781ff08..eb3b5ceee 100644
+index 83781ff..7b9c93c 100644
 --- a/src/game/g_local.h
 +++ b/src/game/g_local.h
-@@ -1718,6 +1718,10 @@ void aagun_stopusing(gentity_t *self);
+@@ -856,6 +856,7 @@ typedef struct
+ 	int savedClassWeaponTimeCvop;
+ 	int savedClassWeaponTime;
+ 
++	int etlabLastSpawnClass;            ///< ETLab Class Rotation: class of the previous spawn + 1
+ } clientPersistant_t;
+ 
+ /**
+@@ -1413,6 +1414,12 @@ typedef struct level_locals_s
+ 
+ 	uint64_t shoutcasters;     ///< shoutcasters, bitmask
+ 	int ebs_shoutcast[2];      ///< ebs shoutcast entities numbers
++
++	// ETLab round modifiers
++	int etlabModifier;             ///< etlabModifier_t active for this round
++	int etlabModifierEnd;          ///< level.time when a timed modifier ends, 0 while not started
++	int etlabModifierNextTick;     ///< next periodic effect (grenade refill)
++	qboolean etlabSuddenDeathWarned;
+ } level_locals_t;
+ 
+ /**
+@@ -1718,6 +1725,26 @@ void aagun_stopusing(gentity_t *self);
  float AngleDifference(float ang1, float ang2);
  qboolean G_FlingClient(gentity_t *vic, int flingType);
  
 +qboolean G_CanUsePliersOn(const gentity_t *player, const gentity_t *target);
 +void G_ETLabPracticeTargets(gentity_t *player);
++
++// g_etlab.c: round modifiers
++qboolean G_ETLabModifierActive(int index);
++void G_ETLabModifierInit(qboolean restart);
++void G_ETLabModifierFrame(void);
++void G_ETLabModifierSet(int index, qboolean announce);
++void G_ETLabModifierClientBegin(gentity_t *ent);
++void G_ETLabApplyChargeTimes(void);
++int G_ETLabLimboTime(int base);
++int G_ETLabDynamiteFuse(void);
++int G_ETLabTeamMaxLandmines(void);
++qboolean G_ETLabRespawnBlocked(void);
++void G_ETLabModifierSpawnWeapons(gclient_t *client);
++qboolean G_ETLabRotateClass(gclient_t *client);
++void G_ETLabModifierOnKill(gentity_t *victim, gentity_t *attacker);
++int G_ETLabModifier_v(gentity_t *ent, unsigned int dwVoteIndex, char *arg, char *arg2, qboolean fRefereeCmd);
 +void G_RevealLandmine(gentity_t *mine);
 +
  void G_PreFilledMissileEntity(gentity_t *ent, int weaponNum, int realWeapon, int ownerNum, team_t teamNum, int clientNum, gentity_t *parent, const vec3_t start, const vec3_t dir);
  
  int G_GetEnemyPosition(gentity_t *ent, gentity_t *targ);
 diff --git a/src/game/g_main.c b/src/game/g_main.c
-index d4334cfcc..96e59e504 100644
+index d4334cf..2d4e04c 100644
 --- a/src/game/g_main.c
 +++ b/src/game/g_main.c
 @@ -530,7 +530,7 @@ void G_CheckForCursorHints(gentity_t *ent)
@@ -376,8 +1448,39 @@ index d4334cfcc..96e59e504 100644
  				{
  					hintDist = CH_BREAKABLE_DIST;
  					if (checkEnt->methodOfDeath == MOD_DYNAMITE && G_LegacyRevive_IsFirstReviveRestricted(ent))
+@@ -1519,6 +1519,9 @@ void G_InitGame(int levelTime, int randomSeed, int restart, int etLegacyServer,
+ 	trap_SetConfigstring(CS_CHARGETIMES, cs);
+ 	trap_SetConfigstring(CS_FILTERCAMS, va("%i", g_filtercams.integer));
+ 
++	// ETLab: round modifier for this map (kept across map_restart)
++	G_ETLabModifierInit(restart ? qtrue : qfalse);
++
+ 	cs[0] = '\0';
+ 	Info_SetValueForKey(cs, "c0", team_maxSoldiers.string);
+ 	Info_SetValueForKey(cs, "c1", team_maxMedics.string);
+@@ -4686,6 +4689,9 @@ void G_RunFrame(int levelTime)
+ 
+ 	CheckWolfMP();
+ 
++	// ETLab: round modifier lifetime and timed effects
++	G_ETLabModifierFrame();
++
+ 	// see if it is time to end the level
+ 	CheckExitRules();
+ 
+@@ -4702,8 +4708,8 @@ void G_RunFrame(int levelTime)
+ 
+ 	if (level.gameManager)
+ 	{
+-		level.gameManager->s.otherEntityNum  = MAX(0, team_maxLandmines.integer - G_CountTeamLandmines(TEAM_AXIS));
+-		level.gameManager->s.otherEntityNum2 = MAX(0, team_maxLandmines.integer - G_CountTeamLandmines(TEAM_ALLIES));
++		level.gameManager->s.otherEntityNum  = MAX(0, G_ETLabTeamMaxLandmines() - G_CountTeamLandmines(TEAM_AXIS));
++		level.gameManager->s.otherEntityNum2 = MAX(0, G_ETLabTeamMaxLandmines() - G_CountTeamLandmines(TEAM_ALLIES));
+ 	}
+ #ifdef FEATURE_LUA
+ 	G_LuaHook_RunFrame(levelTime);
 diff --git a/src/game/g_missile.c b/src/game/g_missile.c
-index 1166f38bc..f043188c7 100644
+index 1166f38..f043188 100644
 --- a/src/game/g_missile.c
 +++ b/src/game/g_missile.c
 @@ -1806,7 +1806,7 @@ qboolean G_LandmineSnapshotCallback(int entityNum, int clientNum)
@@ -389,8 +1492,40 @@ index 1166f38bc..f043188c7 100644
  	{
  		return qtrue;
  	}
+diff --git a/src/game/g_script.c b/src/game/g_script.c
+index db6e5a6..1ea3826 100644
+--- a/src/game/g_script.c
++++ b/src/game/g_script.c
+@@ -1412,8 +1412,8 @@ void SP_script_multiplayer(gentity_t *ent)
+ 		G_Error("^1ERROR: multiple script_multiplayers found^7\n");
+ 	}
+ 	level.gameManager                    = ent;
+-	level.gameManager->s.otherEntityNum  = team_maxLandmines.integer;  // axis landmine count
+-	level.gameManager->s.otherEntityNum2 = team_maxLandmines.integer;  // allies landmine count
++	level.gameManager->s.otherEntityNum  = G_ETLabTeamMaxLandmines();  // axis landmine count
++	level.gameManager->s.otherEntityNum2 = G_ETLabTeamMaxLandmines();  // allies landmine count
+ 	level.gameManager->s.modelindex      = qfalse; // axis HQ doesn't exist
+ 	level.gameManager->s.modelindex2     = qfalse; // allied HQ doesn't exist
+ 
+diff --git a/src/game/g_stats.c b/src/game/g_stats.c
+index 0418bf6..5816497 100644
+--- a/src/game/g_stats.c
++++ b/src/game/g_stats.c
+@@ -426,6 +426,12 @@ void G_AddSkillPoints(gentity_t *ent, skillType_t skill, float points, const cha
+ 		return; // no xp in LMS
+ 	}
+ 
++	// ETLab Double XP
++	if (G_ETLabModifierActive(ETLAB_MOD_DOUBLEXP))
++	{
++		points *= 2;
++	}
++
+ 	level.teamXP[skill][ent->client->sess.sessionTeam - TEAM_AXIS] += points;
+ 
+ 	ent->client->sess.skillpoints[skill] += points;
 diff --git a/src/game/g_teammapdata.c b/src/game/g_teammapdata.c
-index b7e7e2bd3..515282223 100644
+index b7e7e2b..182c88a 100644
 --- a/src/game/g_teammapdata.c
 +++ b/src/game/g_teammapdata.c
 @@ -1170,7 +1170,7 @@ void G_CheckSpottedLandMines(void)
@@ -402,7 +1537,13 @@ index b7e7e2bd3..515282223 100644
  		{
  			G_SetupFrustum_ForBinoculars(ent);
  
-@@ -1211,21 +1211,7 @@ void G_CheckSpottedLandMines(void)
+@@ -1206,26 +1206,12 @@ void G_CheckSpottedLandMines(void)
+ 									ent2->s.density                  = ent - g_entities + 1;
+ 									ent2->missionLevel               = level.time;
+ 
+-									ent->client->landmineSpotted->count2 += 50; // @sv_fps
++									ent->client->landmineSpotted->count2 += G_ETLabModifierActive(ETLAB_MOD_QUICKSPOT) ? 100 : 50; // @sv_fps
+ 									if (ent->client->landmineSpotted->count2 >= 250)
  									{
  										ent->client->landmineSpotted->count2 = 250;
  
@@ -425,10 +1566,31 @@ index b7e7e2bd3..515282223 100644
  
  										G_PopupMessageForMines(ent);
  
+diff --git a/src/game/g_vote.c b/src/game/g_vote.c
+index 7a9636f..a0497ca 100644
+--- a/src/game/g_vote.c
++++ b/src/game/g_vote.c
+@@ -96,6 +96,7 @@ static const vote_reference_t aVoteInfo[] =
+ 	{ 0x1ff, "poll",                   G_Poll_v,                   "[poll]",                     " <text>^7\n  Poll majority opinion"                                  },
+ 	{ 0x1ff, "config",                 G_Config_v,                 "Game config",                " <configname>^7\n  Loads up the server game config"                  },
+ 	{ 0x1ff, "cointoss",               G_CoinToss_v,               "Coin toss",                  " ^7\n  Tosses a coin and displays result to all players"             },
++	{ 0x1ff, "modifier",               G_ETLabModifier_v,          "Round modifier",             " <name|none>^7\n  Sets the ETLab round modifier from the server pool"   },
+ 	{ 0,     0,                        NULL,                       0,                            0                                                                     },
+ };
+ 
 diff --git a/src/game/g_weapon.c b/src/game/g_weapon.c
-index b5d39ff9f..5ef09e8f4 100644
+index b5d39ff..d0d22c1 100644
 --- a/src/game/g_weapon.c
 +++ b/src/game/g_weapon.c
+@@ -1805,7 +1805,7 @@ void G_ArmLandmine(gentity_t *traceEnt, gentity_t *ent)
+ 	}
+ 
+ 	// the team reach the maximum landmines to be armed, abord planting and free the landmine
+-	if (G_CountTeamLandmines(ent->client->sess.sessionTeam) >= team_maxLandmines.integer)
++	if (G_CountTeamLandmines(ent->client->sess.sessionTeam) >= G_ETLabTeamMaxLandmines())
+ 	{
+ 		trap_SendServerCommand(ent - g_entities, "cp \"Your team has too many landmines placed\" 1");
+ 		G_RecoverLandmine(traceEnt, ent);
 @@ -1845,6 +1845,7 @@ void G_ArmLandmine(gentity_t *traceEnt, gentity_t *ent)
  	traceEnt->timestamp = level.time + 1000;
  	traceEnt->health    = 0;
@@ -449,6 +1611,22 @@ index b5d39ff9f..5ef09e8f4 100644
  
  		if (traceEnt->s.teamNum != ent->client->sess.sessionTeam)
  		{
+@@ -2229,12 +2233,12 @@ void G_ArmDynamite(gentity_t *traceEnt, gentity_t *ent)
+ 	// dynamite crosshair ID
+ 	traceEnt->s.otherEntityNum = ent->s.number;
+ 
+-	// arm it
+-	traceEnt->nextthink = level.time + 30000;
++	// arm it (ETLab Long Fuse may extend the timer)
++	traceEnt->nextthink = level.time + G_ETLabDynamiteFuse();
+ 	traceEnt->think     = G_ExplodeMissile;
+ 
+ 	// moved down here to prevent two prints when dynamite IS near objective
+-	trap_SendServerCommand(ent - g_entities, "cp \"Dynamite is now armed with a 30 second timer!\" 1");
++	trap_SendServerCommand(ent - g_entities, va("cp \"Dynamite is now armed with a %i second timer!\" 1", G_ETLabDynamiteFuse() / 1000));
+ 
+ 	// not planted near objective, nothing to do more
+ 	if (hit)
 @@ -2415,6 +2419,17 @@ void G_DisarmDynamite(gentity_t *traceEnt, gentity_t *ent)
   * @brief Weapon_Engineer
   * @param[in,out] ent

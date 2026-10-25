@@ -14,6 +14,9 @@ Die folgenden Pfade beziehen sich auf den automatisch vorbereiteten Release-Sour
 | Snapshot-Sichtbarkeit | `src/game/g_missile.c` |
 | Hinweise | `src/game/g_main.c` |
 | Minenschaden | `src/game/g_combat.c`: `G_DamageExt`, vorhandene Radius-/Deckungsprüfung |
+| Rundenmodifikatoren, Tabelle und Pool | `src/game/bg_etlab.c`: `etlabModifiers`, `BG_ETLabModifierByName`, `BG_ETLabModifierInPool`; Enum und `CS_ETLAB_MODIFIER` in `bg_public.h` |
+| Rundenmodifikatoren, Server | `src/game/g_etlab.c`: `G_ETLabModifierInit`, `G_ETLabModifierFrame`, `G_ETLabModifierSet`, `G_ETLabModifier_v`; Hooks in `g_active.c` (Gravitation, Tempo, Limbo), `g_combat.c` (Rückstoß, Kopfschuss, Vampir), `g_stats.c`, `g_cmds.c`, `g_weapon.c`, `g_teammapdata.c`, `g_client.c`; Cvars in `g_cvars.c` |
+| Rundenmodifikatoren, Client | `src/cgame/cg_etlab.c`: Konfigstring, HUD-Zeile, Verstärkungstimer; Einbindung in `cg_servercmds.c`, `cg_main.c`, `cg_draw.c` |
 | Deklarationen | `bg_public.h`, `g_local.h` |
 
 Alle bisherigen Spielregeln passen in den Gamecode-Mod. Für weitere Klassen müssen zusätzlich Klassenanzahl, Tabellen, Limbo, Characters, Session, Skills, Bots und Netzwerkannahmen zusammen geprüft werden. Eine neue Klasse ist nicht automatisch ein neuer XP-Skill.

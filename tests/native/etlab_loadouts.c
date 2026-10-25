@@ -75,6 +75,7 @@ extern gentity_t *Weapon_Engineer(gentity_t *ent);
 extern void G_CheckSpottedLandMines(void);
 extern void G_ArmLandmine(gentity_t *mine, gentity_t *player);
 static int traceTarget = ENTITYNUM_NONE;
+static char savedModifier[64];
 static qboolean radiusQuery, blocked;
 
 static intptr_t QDECL TestSyscall(intptr_t arg, ...)
@@ -84,8 +85,24 @@ static intptr_t QDECL TestSyscall(intptr_t arg, ...)
 	va_start(ap, arg);
 	switch (arg)
 	{
-	case G_SEND_SERVER_COMMAND: case G_PRINT: case G_LOCATE_GAME_DATA:
+	case G_SEND_SERVER_COMMAND: case G_PRINT: case G_LOCATE_GAME_DATA: case G_SET_CONFIGSTRING: case G_FS_WRITE:
 		break;
+	case G_CVAR_VARIABLE_INTEGER_VALUE: case G_REAL_TIME:
+		break;
+	case G_CVAR_SET:
+	{
+		const char *name = va_arg(ap, const char *), *value = va_arg(ap, const char *);
+		if (!Q_stricmp(name, "etlab_modifier")) { Q_strncpyz(savedModifier, value, sizeof(savedModifier)); }
+		break;
+	}
+	case G_CVAR_VARIABLE_STRING_BUFFER:
+	{
+		const char *name = va_arg(ap, const char *);
+		char *buffer = va_arg(ap, char *);
+		int size = va_arg(ap, int);
+		Q_strncpyz(buffer, Q_stricmp(name, "etlab_modifier") ? "" : savedModifier, size);
+		break;
+	}
 	case G_LINKENTITY: case G_UNLINKENTITY:
 	{
 		gentity_t *e = va_arg(ap, gentity_t *);
@@ -269,12 +286,283 @@ static void CheckSpotting(int team, int cls)
 	player->client = NULL;
 }
 
+static void SetPool(const char *pool, int mode)
+{
+	Q_strncpyz(g_etlabModifierPool.string, pool, sizeof(g_etlabModifierPool.string));
+	g_etlabModifierMode.integer = mode;
+}
+
+static void SpawnWith(gclient_t *client, int team, int cls, weapon_t primary, int modifier)
+{
+	Com_Memset(client, 0, sizeof(*client));
+	client->sess.sessionTeam  = team;
+	client->sess.playerType   = cls;
+	client->sess.playerWeapon = primary;
+	level.etlabModifier       = modifier;
+	SetWolfSpawnWeapons(client);
+}
+
+static void CheckModifiers(void)
+{
+	gclient_t client, plain;
+	gentity_t *player = &g_entities[0], *other = &g_entities[1];
+	int i, pool[ETLAB_MOD_COUNT];
+
+	// Shared table and pool parsing
+	Check(ETLAB_MOD_COUNT == 17 && !Q_stricmp(etlabModifiers[ETLAB_MOD_NONE].name, "none"), "modifier table starts with none");
+	Check(BG_ETLabModifierByName("doublexp") == ETLAB_MOD_DOUBLEXP && BG_ETLabModifierByName("VAMPIRE") == ETLAB_MOD_VAMPIRE, "names resolve case-insensitively");
+	Check(BG_ETLabModifierByName("none") == ETLAB_MOD_NONE && BG_ETLabModifierByName("bogus") == -1 && BG_ETLabModifierByName("") == -1, "unknown names rejected");
+	Check(BG_ETLabModifierInPool("all", ETLAB_MOD_HEADSHOTS) && BG_ETLabModifierInPool("doublexp, vampire;lowammo", ETLAB_MOD_VAMPIRE), "pool keywords and separators");
+	Check(!BG_ETLabModifierInPool("doublexp vampire", ETLAB_MOD_LOWAMMO) && !BG_ETLabModifierInPool("", ETLAB_MOD_LOWAMMO) && !BG_ETLabModifierInPool("all", ETLAB_MOD_NONE), "pool excludes others and none");
+	Check(BG_ETLabModifierPoolList("all", pool) == ETLAB_MOD_COUNT - 1 && pool[0] == ETLAB_MOD_DOUBLEXP, "full pool lists every modifier once");
+	Check(BG_ETLabModifierPoolList("vampire doublexp", pool) == 2 && pool[0] == ETLAB_MOD_DOUBLEXP && pool[1] == ETLAB_MOD_VAMPIRE, "pool list keeps table order");
+	for (i = ETLAB_MOD_NONE + 1; i < ETLAB_MOD_COUNT; i++)
+	{
+		Check(etlabModifiers[i].title[0] && etlabModifiers[i].description[0] && BG_ETLabModifierByName(etlabModifiers[i].name) == i, "every modifier has a unique name, title and description");
+	}
+
+	// Selection: random draws only from the pool, vote-only mode starts empty, off ignores the pool
+	ResetScene();
+	SetPool("lowammo", ETLAB_MODE_RANDOM);
+	G_ETLabModifierInit(qfalse);
+	Check(level.etlabModifier == ETLAB_MOD_LOWAMMO && !Q_stricmp(savedModifier, "lowammo"), "random mode draws from the pool and saves the choice");
+	SetPool("all", ETLAB_MODE_RANDOM_VOTE);
+	for (i = 0; i < 50; i++)
+	{
+		G_ETLabModifierInit(qfalse);
+		Check(level.etlabModifier > ETLAB_MOD_NONE && level.etlabModifier < ETLAB_MOD_COUNT, "random draw stays inside the table");
+	}
+	SetPool("all", ETLAB_MODE_VOTE);
+	G_ETLabModifierInit(qfalse);
+	Check(level.etlabModifier == ETLAB_MOD_NONE, "vote mode starts without a modifier");
+	SetPool("all", ETLAB_MODE_OFF);
+	G_ETLabModifierInit(qfalse);
+	Check(level.etlabModifier == ETLAB_MOD_NONE, "mode 0 never activates a modifier");
+	SetPool("", ETLAB_MODE_RANDOM);
+	G_ETLabModifierInit(qfalse);
+	Check(level.etlabModifier == ETLAB_MOD_NONE, "empty pool means no modifier");
+	// map_restart keeps the saved modifier, but only while it is still in the pool
+	Q_strncpyz(savedModifier, "sidearms", sizeof(savedModifier));
+	SetPool("all", ETLAB_MODE_RANDOM);
+	G_ETLabModifierInit(qtrue);
+	Check(level.etlabModifier == ETLAB_MOD_SIDEARMS, "restart keeps the saved modifier");
+	Q_strncpyz(savedModifier, "sidearms", sizeof(savedModifier));
+	SetPool("doublexp", ETLAB_MODE_RANDOM);
+	G_ETLabModifierInit(qtrue);
+	Check(level.etlabModifier == ETLAB_MOD_NONE, "restart drops a modifier removed from the pool");
+
+	// Vote: refused unless the mode allows votes, validated against the pool, applied on success
+	ResetScene();
+	SetPool("doublexp vampire", ETLAB_MODE_RANDOM);
+	{
+		char arg[16], arg2[VOTE_MAXSTRING];
+		Q_strncpyz(arg, "modifier", sizeof(arg));
+		Q_strncpyz(arg2, "doublexp", sizeof(arg2));
+		Check(G_ETLabModifier_v(NULL, 0, arg, arg2, qfalse) == G_INVALID, "random-only mode refuses modifier votes");
+		SetPool("doublexp vampire", ETLAB_MODE_VOTE);
+		Q_strncpyz(arg2, "lowammo", sizeof(arg2));
+		Check(G_ETLabModifier_v(NULL, 0, arg, arg2, qfalse) == G_INVALID, "vote outside the pool refused");
+		Q_strncpyz(arg2, "bogus", sizeof(arg2));
+		Check(G_ETLabModifier_v(NULL, 0, arg, arg2, qfalse) == G_INVALID, "unknown vote name refused");
+		Q_strncpyz(arg2, "vampire", sizeof(arg2));
+		Check(G_ETLabModifier_v(NULL, 0, arg, arg2, qfalse) == G_OK && !Q_stricmp(level.voteInfo.vote_value, "vampire") && !Q_stricmp(arg2, "Vampire"), "valid vote stores value and display title");
+		Check(G_ETLabModifier_v(NULL, 0, NULL, NULL, qfalse) == G_OK && level.etlabModifier == ETLAB_MOD_VAMPIRE, "passed vote activates the modifier");
+		Q_strncpyz(arg2, "vampire", sizeof(arg2));
+		Check(G_ETLabModifier_v(NULL, 0, arg, arg2, qfalse) == G_INVALID, "voting the active modifier again is refused");
+		Q_strncpyz(arg2, "none", sizeof(arg2));
+		Check(G_ETLabModifier_v(NULL, 0, arg, arg2, qfalse) == G_OK, "none is always a valid vote");
+		G_ETLabModifier_v(NULL, 0, NULL, NULL, qfalse);
+		Check(level.etlabModifier == ETLAB_MOD_NONE, "none vote clears the modifier");
+	}
+
+	// Rule helpers
+	ResetScene();
+	team_maxLandmines.integer = 10;
+	level.etlabModifier = ETLAB_MOD_NONE;
+	Check(G_ETLabLimboTime(30000) == 30000 && G_ETLabDynamiteFuse() == 30000 && G_ETLabTeamMaxLandmines() == 10, "no modifier keeps stock values");
+	level.etlabModifier = ETLAB_MOD_FASTSPAWN;
+	Check(G_ETLabLimboTime(30000) == 15000 && G_ETLabLimboTime(1500) == 1500, "Fast Reinforcements halves usable limbo times only");
+	level.etlabModifier = ETLAB_MOD_LONGDYNO;
+	Check(G_ETLabDynamiteFuse() == 45000, "Long Fuse: 45 seconds");
+	level.etlabModifier = ETLAB_MOD_ENGINEERFEST;
+	Check(G_ETLabTeamMaxLandmines() == 20, "Engineer Fest doubles the landmine limit");
+	team_maxLandmines.integer = -1;
+	Check(G_ETLabTeamMaxLandmines() == -1, "unlimited landmine setting passes through");
+	team_maxLandmines.integer = 10;
+	// G_InitGame sets the map-script factors to 1 before the modifier is initialised
+	level.medicChargeTimeModifier[0] = level.medicChargeTimeModifier[1] = 1.f;
+	level.engineerChargeTimeModifier[0] = level.engineerChargeTimeModifier[1] = 1.f;
+	g_medicChargeTime.integer = 40000;
+	g_engineerChargeTime.integer = 30000;
+	G_ETLabApplyChargeTimes();
+	Check(level.engineerChargeTime[0] == 15000 && level.engineerChargeTime[1] == 15000 && level.medicChargeTime[0] == 40000, "Engineer Fest halves engineer charge only");
+	level.etlabModifier = ETLAB_MOD_MEDICSHORTAGE;
+	G_ETLabApplyChargeTimes();
+	Check(level.medicChargeTime[1] == 60000 && level.engineerChargeTime[1] == 30000, "Medic Shortage slows medic charge by half");
+	level.etlabModifier = ETLAB_MOD_NONE;
+	G_ETLabApplyChargeTimes();
+	Check(level.medicChargeTime[0] == 40000 && level.engineerChargeTime[0] == 30000, "charge times return to normal");
+
+	// Sudden Death blocks reinforcements inside the final two minutes of a timelimit
+	g_gamestate.integer = GS_PLAYING;
+	g_timelimit.value = 10;
+	level.startTime = 0;
+	level.timeCurrent = 7 * 60000;
+	level.etlabModifier = ETLAB_MOD_SUDDENDEATH;
+	Check(!G_ETLabRespawnBlocked(), "Sudden Death allows reinforcements before the window");
+	level.timeCurrent = 8 * 60000 + 1;
+	Check(G_ETLabRespawnBlocked(), "Sudden Death blocks reinforcements in the final two minutes");
+	g_timelimit.value = 0;
+	Check(!G_ETLabRespawnBlocked(), "Sudden Death needs a timelimit");
+	g_timelimit.value = 10;
+	level.etlabModifier = ETLAB_MOD_NONE;
+	Check(!G_ETLabRespawnBlocked(), "no modifier never blocks reinforcements");
+
+	// Loadouts: Sidearms Only strips primaries and grenades, keeps class tools; Low Ammo halves reserves
+	for (i = TEAM_AXIS; i <= TEAM_ALLIES; i++)
+	{
+		weapon_t smg = i == TEAM_AXIS ? WP_MP40 : WP_THOMPSON;
+		int w;
+		SpawnWith(&plain, i, PC_SOLDIER, smg, ETLAB_MOD_NONE);
+		SpawnWith(&client, i, PC_SOLDIER, smg, ETLAB_MOD_SIDEARMS);
+		Check(!COM_BitCheck(client.ps.weapons, smg) && COM_BitCheck(plain.ps.weapons, smg), "Sidearms Only removes the primary weapon");
+		Check(!COM_BitCheck(client.ps.weapons, WP_GRENADE_LAUNCHER) && !COM_BitCheck(client.ps.weapons, WP_GRENADE_PINEAPPLE), "Sidearms Only removes hand grenades");
+		Check(COM_BitCheck(client.ps.weapons, BG_GetPlayerClassInfo(i, PC_SOLDIER)->classKnifeWeapon.weapon) && COM_BitCheck(client.ps.weapons, WP_PLIERS), "Sidearms Only keeps knife and pliers");
+		Check(COM_BitCheck(client.ps.weapons, client.ps.weapon) && (GetWeaponTableData(client.ps.weapon)->type & WEAPON_TYPE_PISTOL), "Sidearms Only selects an owned pistol");
+		for (w = WP_NONE + 1; w < WP_NUM_WEAPONS; w++)
+		{
+			Check(!(COM_BitCheck(client.ps.weapons, w) && (GetWeaponTableData(w)->type & (WEAPON_TYPE_SMG | WEAPON_TYPE_RIFLE | WEAPON_TYPE_MG | WEAPON_TYPE_PANZER | WEAPON_TYPE_MORTAR | WEAPON_TYPE_BEAM))), "Sidearms Only leaves no heavy or long weapon");
+		}
+		SpawnWith(&client, i, PC_SOLDIER, i == TEAM_AXIS ? WP_PANZERFAUST : WP_BAZOOKA, ETLAB_MOD_SIDEARMS);
+		Check(!COM_BitCheck(client.ps.weapons, WP_PANZERFAUST) && !COM_BitCheck(client.ps.weapons, WP_BAZOOKA) && COM_BitCheck(client.ps.weapons, i == TEAM_AXIS ? WP_AKIMBO_LUGER : WP_AKIMBO_COLT), "Sidearms Only keeps the Akimbo bonus and drops the launcher");
+		SpawnWith(&client, i, PC_ENGINEER, smg, ETLAB_MOD_SIDEARMS);
+		Check(COM_BitCheck(client.ps.weapons, WP_DYNAMITE) && COM_BitCheck(client.ps.weapons, WP_LANDMINE) && !COM_BitCheck(client.ps.weapons, smg), "Sidearms Only keeps Engineer objectives tools");
+		SpawnWith(&client, i, PC_MEDIC, smg, ETLAB_MOD_SIDEARMS);
+		Check(COM_BitCheck(client.ps.weapons, WP_MEDIC_SYRINGE) && COM_BitCheck(client.ps.weapons, WP_MEDKIT), "Sidearms Only keeps Medic tools");
+		SpawnWith(&client, i, PC_SOLDIER, smg, ETLAB_MOD_LOWAMMO);
+		Check(client.ps.ammo[GetWeaponTableData(smg)->ammoIndex] == plain.ps.ammo[GetWeaponTableData(smg)->ammoIndex] / 2 && plain.ps.ammo[GetWeaponTableData(smg)->ammoIndex] > 0, "Low Ammo halves the primary reserve");
+		Check(client.ps.ammoclip[GetWeaponTableData(smg)->clipIndex] == plain.ps.ammoclip[GetWeaponTableData(smg)->clipIndex], "Low Ammo keeps the loaded clip");
+		Check(client.ps.ammo[WP_GRENADE_LAUNCHER] + client.ps.ammo[WP_GRENADE_PINEAPPLE] == plain.ps.ammo[WP_GRENADE_LAUNCHER] + plain.ps.ammo[WP_GRENADE_PINEAPPLE], "Low Ammo keeps hand grenades");
+		Check(COM_BitCheck(client.ps.weapons, smg), "Low Ammo keeps the loadout itself");
+	}
+
+	// Class Rotation switches a repeated class to the next one and tracks the spawn class
+	Com_Memset(&client, 0, sizeof(client));
+	client.sess.sessionTeam = TEAM_ALLIES;
+	client.sess.playerType = client.sess.latchPlayerType = PC_SOLDIER;
+	level.etlabModifier = ETLAB_MOD_NONE;
+	Check(!G_ETLabRotateClass(&client) && client.pers.etlabLastSpawnClass == PC_SOLDIER + 1, "no rotation without the modifier, spawn class remembered");
+	level.etlabModifier = ETLAB_MOD_CLASSROTATION;
+	Check(G_ETLabRotateClass(&client) && client.sess.playerType == PC_MEDIC && client.sess.latchPlayerType == PC_MEDIC, "repeated class rotates to the next class");
+	Check(client.sess.playerWeapon == BG_GetPlayerClassInfo(TEAM_ALLIES, PC_MEDIC)->classPrimaryWeapons[0].weapon && client.sess.latchPlayerWeapon == client.sess.playerWeapon, "rotation assigns the class default primary");
+	client.sess.playerType = client.sess.latchPlayerType = PC_COVERTOPS;
+	Check(!G_ETLabRotateClass(&client) && client.sess.playerType == PC_COVERTOPS, "a freely chosen new class is kept");
+	Check(G_ETLabRotateClass(&client) && client.sess.playerType == PC_SOLDIER, "rotation wraps around after Covert Ops");
+
+	// Vampire heals the enemy killer up to max health only
+	ResetScene();
+	Com_Memset(&client, 0, sizeof(client));
+	Com_Memset(&plain, 0, sizeof(plain));
+	player->client = &client; other->client = &plain;
+	client.sess.sessionTeam = TEAM_AXIS; plain.sess.sessionTeam = TEAM_ALLIES;
+	client.ps.stats[STAT_MAX_HEALTH] = 100;
+	player->health = 50;
+	level.etlabModifier = ETLAB_MOD_NONE;
+	G_ETLabModifierOnKill(other, player);
+	Check(player->health == 50, "no healing without Vampire");
+	level.etlabModifier = ETLAB_MOD_VAMPIRE;
+	G_ETLabModifierOnKill(other, player);
+	Check(player->health == 70 && client.ps.stats[STAT_HEALTH] == 70, "Vampire restores 20 health");
+	player->health = 95;
+	G_ETLabModifierOnKill(other, player);
+	Check(player->health == 100, "Vampire caps at max health");
+	plain.sess.sessionTeam = TEAM_AXIS;
+	player->health = 50;
+	G_ETLabModifierOnKill(other, player);
+	Check(player->health == 50, "Vampire ignores team kills");
+	G_ETLabModifierOnKill(player, player);
+	Check(player->health == 50, "Vampire ignores suicides");
+	player->client = other->client = NULL;
+
+	// Timed modifiers: Grenade Rain refills, starts with the match and ends after the configured minutes
+	ResetScene();
+	Com_Memset(&client, 0, sizeof(client));
+	player->client = &client; player->inuse = qtrue; player->health = 100;
+	client.sess.sessionTeam = TEAM_AXIS; client.sess.playerType = PC_SOLDIER; client.sess.playerWeapon = WP_MP40;
+	SetWolfSpawnWeapons(&client);
+	client.ps.ammo[WP_GRENADE_LAUNCHER] = 0; client.ps.ammoclip[WP_GRENADE_LAUNCHER] = 0;
+	level.numConnectedClients = 1; level.sortedClients[0] = 0;
+	level.etlabModifier = ETLAB_MOD_GRENADERAIN;
+	g_gamestate.integer = GS_WARMUP;
+	G_ETLabModifierFrame();
+	Check(level.etlabModifierEnd == 0 && client.ps.ammo[WP_GRENADE_LAUNCHER] == 0, "timed modifier waits for the match start");
+	g_gamestate.integer = GS_PLAYING;
+	G_ETLabModifierFrame();
+	Check(level.etlabModifierEnd == level.time + 5 * 60000, "timed modifier runs five minutes by default");
+	Check(client.ps.ammo[WP_GRENADE_LAUNCHER] == BG_MaxAmmoForWeapon(WP_GRENADE_LAUNCHER, client.sess.skill, PC_SOLDIER), "Grenade Rain refills to the class maximum");
+	client.ps.ammo[WP_GRENADE_LAUNCHER] = 0;
+	level.time += 10000;
+	G_ETLabModifierFrame();
+	Check(client.ps.ammo[WP_GRENADE_LAUNCHER] == 0, "Grenade Rain refills every 20 seconds, not every frame");
+	level.time += 10000;
+	G_ETLabModifierFrame();
+	Check(client.ps.ammo[WP_GRENADE_LAUNCHER] > 0, "Grenade Rain second refill");
+	level.time = level.etlabModifierEnd;
+	G_ETLabModifierFrame();
+	Check(level.etlabModifier == ETLAB_MOD_NONE && level.etlabModifierEnd == 0, "timed modifier ends and regular rules return");
+	player->client = NULL;
+	level.numConnectedClients = 0;
+	g_medicChargeTime.integer = 0;
+	g_gamestate.integer = GS_WARMUP;
+	level.etlabModifier = ETLAB_MOD_NONE;
+}
+
+static void CheckQuickSpotting(void)
+{
+	gclient_t client;
+	gentity_t *player = &g_entities[0], *mine = &g_entities[MAX_CLIENTS];
+	int i, modifier;
+
+	for (modifier = 0; modifier < 2; modifier++)
+	{
+		ResetScene();
+		Com_Memset(&client, 0, sizeof(client));
+		player->client = &client;
+		player->inuse = qtrue;
+		player->health = 100;
+		client.sess.sessionTeam = TEAM_AXIS;
+		client.sess.playerType = PC_SOLDIER;
+		client.ps.stats[STAT_KEYS] = 1 << INV_BINOCS;
+		client.ps.eFlags |= EF_ZOOMING;
+		level.numConnectedClients = 1;
+		level.etlabModifier = modifier ? ETLAB_MOD_QUICKSPOT : ETLAB_MOD_NONE;
+		mine->s.number = MAX_CLIENTS;
+		mine->inuse = qtrue;
+		mine->s.eType = ET_MISSILE;
+		mine->methodOfDeath = MOD_LANDMINE;
+		mine->s.weapon = WP_LANDMINE;
+		mine->s.effect1Time = 1;
+		mine->s.teamNum = TEAM_ALLIES;
+		VectorSet(mine->r.currentOrigin, 500, 0, 0);
+		for (i = 0; i < 3; i++)
+		{
+			level.time += 500;
+			G_CheckSpottedLandMines();
+		}
+		Check((mine->s.modelindex2 != 0) == (modifier != 0), "Quick Spotting halves the binocular dwell, normal dwell unchanged");
+		player->client = NULL;
+		level.etlabModifier = ETLAB_MOD_NONE;
+	}
+}
+
 int main(void)
 {
 	int team, cls, i, xp;
 	team_riflegrenades.integer = 1;
 	dllEntry(TestSyscall);
 	CheckMineDamage();
+	CheckModifiers();
+	CheckQuickSpotting();
 	for (team = TEAM_AXIS; team <= TEAM_ALLIES; team++)
 	{
 		for (cls = PC_SOLDIER; cls < NUM_PLAYER_CLASSES; cls++)
@@ -291,6 +579,6 @@ int main(void)
 			}
 		}
 	}
-	printf("PASS: %d production spawn/menu/pliers/mines checks, both teams, all classes and primary loadouts, XP 0/4.\n", checks);
+	printf("PASS: %d production spawn/menu/pliers/mines/modifier checks, both teams, all classes and primary loadouts, XP 0/4.\n", checks);
 	return 0;
 }

@@ -18,7 +18,8 @@ Beauftragte Erweiterungen des Weihnachts-LAN-Mods, Stand 25.10.2026. Reihenfolge
   - `g_etlabModifierPool`: Liste der Modi, die überhaupt zur Wahl stehen. Nur Modi aus dem Pool werden gezogen oder angeboten.
   - `g_etlabModifierMode`: Art der Wahl aus dem Pool. 0 aus, 1 Zufall pro Map, 2 Vote durch die Spieler, 3 Zufall mit Vote-Übersteuerung.
 - Beide Cvars zur Laufzeit änderbar, wirksam ab der nächsten Map. Ein leerer Pool bedeutet keine Modifikatoren.
-- Offen: konkrete Modusliste und Dauer eines Gaudi-Modus.
+- Umgesetzt: 16 Modi (10 taktisch, 6 Gaudi), Pool- und Modus-Cvars, Vote, HUD-Zeile, native Tests. Sollverhalten in `spielregeln.md`. Gaudi-Dauer `g_etlabModifierMinutes`, Standard 5.
+- Offen: Runtime-Abnahme auf Host mit Original-PK3s (HUD-Zeile, Vote-Ablauf, Headshots-Only, Rückstoß, Gravitation); Werte nach Testrunde feinjustieren.
 
 ## 2. Rundenauszeichnungen, weihnachtlich
 
