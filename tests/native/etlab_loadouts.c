@@ -79,6 +79,7 @@ static char savedModifier[64];
 static qboolean radiusQuery, blocked;
 static char endgameStats[BIG_INFO_STRING], lastAward[MAX_STRING_CHARS];
 static int chatLines, awardCommands;
+static char weaponTuningString[64];
 
 static intptr_t QDECL TestSyscall(intptr_t arg, ...)
 {
@@ -103,6 +104,7 @@ static intptr_t QDECL TestSyscall(intptr_t arg, ...)
 		int num = va_arg(ap, int);
 		const char *text = va_arg(ap, const char *);
 		if (num == CS_ENDGAME_STATS) { Q_strncpyz(endgameStats, text, sizeof(endgameStats)); }
+		if (num == CS_ETLAB_WEAPONS) { Q_strncpyz(weaponTuningString, text, sizeof(weaponTuningString)); }
 		break;
 	}
 	case G_CVAR_VARIABLE_INTEGER_VALUE: case G_REAL_TIME:
@@ -850,6 +852,176 @@ static void CheckAwards(void)
 	g_gamestate.integer = GS_WARMUP;
 }
 
+static qboolean TunedWeapon(int weapon)
+{
+	return weapon == WP_MORTAR || weapon == WP_MORTAR_SET || weapon == WP_MORTAR2 || weapon == WP_MORTAR2_SET ||
+	       weapon == WP_MOBILE_MG42 || weapon == WP_MOBILE_MG42_SET || weapon == WP_MOBILE_BROWNING || weapon == WP_MOBILE_BROWNING_SET ||
+	       weapon == WP_SATCHEL || weapon == WP_SATCHEL_DET || weapon == WP_FLAMETHROWER;
+}
+
+static int PrimaryStartingAmmo(int team, weapon_t weapon)
+{
+	bg_playerclass_t *info = BG_GetPlayerClassInfo(team, PC_SOLDIER);
+	int i;
+	for (i = 0; i < MAX_WEAPS_PER_CLASS; i++)
+	{
+		if (info->classPrimaryWeapons[i].weapon == weapon)
+		{
+			return info->classPrimaryWeapons[i].startingAmmo;
+		}
+	}
+	return -1;
+}
+
+static void CheckWeaponTuning(void)
+{
+	static weaponTable_t originalWeapons[WP_NUM_WEAPONS];
+	static bg_playerclass_t originalClasses[2][NUM_PLAYER_CLASSES];
+	gclient_t client;
+	gentity_t *attacker = &g_entities[0], *missile = &g_entities[MAX_CLIENTS];
+	const int all = (1 << ETLAB_WT_COUNT) - 1;
+	vec3_t zero = { 0, 0, 0 };
+	int i, on, team, mask;
+
+	Com_Memcpy(originalWeapons, weaponTable, sizeof(originalWeapons));
+	Com_Memcpy(originalClasses, bg_playerClasses, sizeof(originalClasses));
+
+	// Shared table and list parsing
+	Check(ETLAB_WT_COUNT == 13 && ETLAB_WT_COUNT < 31, "thirteen niche weapon tunings fit the configstring mask");
+	for (i = 0; i < ETLAB_WT_COUNT; i++)
+	{
+		const char *group = etlabWeaponTunings[i].group;
+		Check(BG_ETLabWeaponTuningMask(etlabWeaponTunings[i].name) == 1 << i, "every tuning name selects exactly itself");
+		Check(!Q_stricmp(group, "mortar") || !Q_stricmp(group, "mg") || !Q_stricmp(group, "satchel") || !Q_stricmp(group, "flamer"), "every tuning belongs to one weapon group");
+	}
+	Check(!BG_ETLabWeaponTuningMask("") && !BG_ETLabWeaponTuningMask(NULL) && !BG_ETLabWeaponTuningMask("bogus none"), "empty or unknown lists select nothing");
+	Check(BG_ETLabWeaponTuningMask("all") == all && BG_ETLabWeaponTuningMask("mortar mg satchel flamer") == all, "all and the four groups select every tuning");
+	Check(BG_ETLabWeaponTuningMask("MORTAR") == 0xF && BG_ETLabWeaponTuningMask("mg") == ((1 << ETLAB_WT_MG_HEAT) | (1 << ETLAB_WT_MG_SETUP) | (1 << ETLAB_WT_MG_BELT)), "groups select their own tunings case-insensitively");
+	Check(BG_ETLabWeaponTuningMask("mgheat, flamedamage;satchelfuse") == ((1 << ETLAB_WT_MG_HEAT) | (1 << ETLAB_WT_FLAME_DAMAGE) | (1 << ETLAB_WT_SATCHEL_FUSE)), "names and separators like the modifier pool");
+
+	// Default: original values
+	Check(!etlabWeaponTuning && !BG_ETLabWeaponTuningActive(ETLAB_WT_FLAME_SPEED), "no weapon tuning by default");
+	Check(weaponTable[WP_MORTAR_SET].chargeTimeCoeff[0] == .5f && weaponTable[WP_MORTAR2_SET].chargeTimeCoeff[1] == .33f && weaponTable[WP_MORTAR].altSwitchTimeFrom == 1667, "original mortar charge and setup");
+	Check(weaponTable[WP_MOBILE_MG42].maxHeat == 1500 && weaponTable[WP_MOBILE_BROWNING].altSwitchTimeFrom == 1250, "original MG heat and setup");
+	Check(weaponTable[WP_SATCHEL].chargeTimeCoeff[0] == 1.f && weaponTable[WP_SATCHEL].splashRadius == 250 && weaponTable[WP_SATCHEL_DET].fireDelayTime == 722, "original satchel values");
+	Check(weaponTable[WP_FLAMETHROWER].maxAmmo == 200 && weaponTable[WP_FLAMETHROWER].damage == 5, "original flamethrower values");
+
+	// Everything on: tuned table values for both teams
+	BG_ETLabApplyWeaponTuning(all);
+	Check(etlabWeaponTuning == all && BG_ETLabWeaponTuningActive(ETLAB_WT_FLAME_SPEED) && !BG_ETLabWeaponTuningActive(ETLAB_WT_COUNT), "active mask is shared with prediction");
+	for (i = 0; i < 2; i++)
+	{
+		weapon_t set = i ? WP_MORTAR2_SET : WP_MORTAR_SET, carry = i ? WP_MORTAR2 : WP_MORTAR;
+		weapon_t mg = i ? WP_MOBILE_MG42 : WP_MOBILE_BROWNING, mgSet = i ? WP_MOBILE_MG42_SET : WP_MOBILE_BROWNING_SET;
+		Check(weaponTable[set].chargeTimeCoeff[0] == .33f && weaponTable[set].chargeTimeCoeff[1] == .25f, "mortar shot costs 1/3 (1/4 with skill) of the soldier bar");
+		Check(weaponTable[carry].altSwitchTimeFrom == 1000 && weaponTable[carry].altSwitchTimeTo == originalWeapons[carry].altSwitchTimeTo, "mortar deploys in 1.0 s, packing up unchanged");
+		Check(weaponTable[carry].maxAmmo == 20 && weaponTable[set].maxAmmo == originalWeapons[set].maxAmmo + 5, "mortar carries five more shells");
+		Check(weaponTable[set].splashRadius == 450 && weaponTable[set].splashDamage == originalWeapons[set].splashDamage && weaponTable[set].damage == originalWeapons[set].damage, "mortar radius 450, damage unchanged");
+		Check(weaponTable[mg].maxHeat == 2500 && weaponTable[mgSet].maxHeat == 2500 && weaponTable[mg].coolRate == originalWeapons[mg].coolRate, "MG overheats after about 50 instead of 30 rounds");
+		Check(weaponTable[mg].altSwitchTimeFrom == 800 && weaponTable[mg].altSwitchTimeTo == originalWeapons[mg].altSwitchTimeTo, "MG deploys in 0.8 s, packing up unchanged");
+		Check(weaponTable[mg].spread == originalWeapons[mg].spread && weaponTable[mg].damage == originalWeapons[mg].damage, "MG accuracy and damage unchanged");
+	}
+	Check(weaponTable[WP_SATCHEL].chargeTimeCoeff[0] == .75f && weaponTable[WP_SATCHEL].chargeTimeCoeff[1] == .5f, "satchel costs 3/4 (1/2 with skill) of the covert ops bar");
+	Check(weaponTable[WP_SATCHEL].splashRadius == 300 && weaponTable[WP_SATCHEL].splashDamage == 250, "satchel radius 300, damage unchanged");
+	Check(weaponTable[WP_SATCHEL_DET].fireDelayTime == 400, "satchel detonator fires after 400 ms");
+	Check(weaponTable[WP_FLAMETHROWER].maxAmmo == 300 && weaponTable[WP_FLAMETHROWER].maxClip == 300 && weaponTable[WP_FLAMETHROWER].nextShotTime == originalWeapons[WP_FLAMETHROWER].nextShotTime, "flamethrower carries 300 fuel at the same burn rate");
+	Check(weaponTable[WP_FLAMETHROWER].damage == 6, "flamethrower damage 6 per hit and afterburn tick");
+	for (i = 0; i < WP_NUM_WEAPONS; i++)
+	{
+		if (!TunedWeapon(i))
+		{
+			Check(!memcmp(&weaponTable[i], &originalWeapons[i], sizeof(weaponTable_t)), "untuned weapons, including primary weapons, stay unchanged");
+		}
+	}
+
+	// A single tuning changes only its own values; applying again does not stack
+	BG_ETLabApplyWeaponTuning(1 << ETLAB_WT_MG_HEAT);
+	BG_ETLabApplyWeaponTuning(1 << ETLAB_WT_MG_HEAT);
+	Check(weaponTable[WP_MOBILE_MG42].maxHeat == 2500 && weaponTable[WP_MOBILE_MG42].altSwitchTimeFrom == 1250 && PrimaryStartingAmmo(TEAM_AXIS, WP_MOBILE_MG42) == 0, "MG heat alone leaves setup and belt unchanged");
+	Check(weaponTable[WP_MORTAR].maxAmmo == 15 && PrimaryStartingAmmo(TEAM_ALLIES, WP_MORTAR) == 15 && weaponTable[WP_SATCHEL].splashRadius == 250 && weaponTable[WP_FLAMETHROWER].damage == 5, "other weapons untouched by a single tuning");
+	BG_ETLabApplyWeaponTuning(1 << ETLAB_WT_MORTAR_AMMO);
+	BG_ETLabApplyWeaponTuning(1 << ETLAB_WT_MORTAR_AMMO);
+	Check(weaponTable[WP_MORTAR].maxAmmo == 20 && PrimaryStartingAmmo(TEAM_ALLIES, WP_MORTAR) == 20 && PrimaryStartingAmmo(TEAM_AXIS, WP_MORTAR2) == 20 && weaponTable[WP_MOBILE_MG42].maxHeat == 1500, "repeated application does not stack");
+
+	// Off restores both tables bit for bit
+	BG_ETLabApplyWeaponTuning(0);
+	Check(!etlabWeaponTuning && !memcmp(weaponTable, originalWeapons, sizeof(originalWeapons)) && !memcmp(bg_playerClasses, originalClasses, sizeof(originalClasses)), "tuning off restores weapon and class tables exactly");
+
+	// Real spawn loadouts, carrying capacity and ammo packs, both teams
+	for (team = TEAM_AXIS; team <= TEAM_ALLIES; team++)
+	{
+		weapon_t mortar = team == TEAM_AXIS ? WP_MORTAR2 : WP_MORTAR;
+		weapon_t mg = team == TEAM_AXIS ? WP_MOBILE_MG42 : WP_MOBILE_BROWNING;
+		weapon_t smg = team == TEAM_AXIS ? WP_MP40 : WP_THOMPSON;
+		int ammo;
+		for (on = 0; on <= 1; on++)
+		{
+			BG_ETLabApplyWeaponTuning(on ? all : 0);
+			SpawnWith(&client, team, PC_SOLDIER, mortar, ETLAB_MOD_NONE);
+			ammo = GetWeaponTableData(mortar)->ammoIndex;
+			Check(COM_BitCheck(client.ps.weapons, mortar) && client.ps.ammo[ammo] == (on ? 20 : 15), "mortar spawns with 20 instead of 15 shells");
+			Check(BG_MaxAmmoForWeapon(mortar, client.sess.skill, PC_SOLDIER) == (on ? 20 : 15), "mortar carrying capacity matches the spawn shells");
+			SpawnWith(&client, team, PC_SOLDIER, mg, ETLAB_MOD_NONE);
+			ammo = GetWeaponTableData(mg)->ammoIndex;
+			Check(client.ps.ammoclip[GetWeaponTableData(mg)->clipIndex] == 150 && client.ps.ammo[ammo] == (on ? 150 : 0), "MG spawns with a second belt in reserve");
+			Check(client.ps.ammo[ammo] <= BG_MaxAmmoForWeapon(mg, client.sess.skill, PC_SOLDIER), "MG reserve within carrying capacity");
+			SpawnWith(&client, team, PC_SOLDIER, mg, ETLAB_MOD_LOWAMMO);
+			Check(client.ps.ammo[ammo] == (on ? 75 : 0), "Low Ammo halves the tuned MG reserve");
+			SpawnWith(&client, team, PC_SOLDIER, WP_FLAMETHROWER, ETLAB_MOD_NONE);
+			ammo = GetWeaponTableData(WP_FLAMETHROWER)->ammoIndex;
+			Check(client.ps.ammo[ammo] == (on ? 300 : 200), "flamethrower spawns with 300 instead of 200 fuel");
+			client.ps.ammo[ammo] = 0;
+			Check(BG_AddMagicAmmo(&client.ps, client.sess.skill, team, 1) && client.ps.ammo[ammo] == (on ? 300 : 200), "one ammo pack refills the whole tank");
+			SpawnWith(&client, team, PC_SOLDIER, smg, ETLAB_MOD_NONE);
+			Check(client.ps.ammo[GetWeaponTableData(smg)->ammoIndex] == PrimaryStartingAmmo(team, smg), "primary SMG reserve unchanged");
+		}
+	}
+
+	// Real missile setup: mortar shells and satchels take the radius from the shared table
+	for (on = 0; on <= 1; on++)
+	{
+		BG_ETLabApplyWeaponTuning(on ? all : 0);
+		ResetScene();
+		G_PreFilledMissileEntity(missile, WP_MORTAR_SET, WP_MORTAR_SET, 0, TEAM_ALLIES, 0, attacker, zero, zero);
+		Check(missile->splashRadius == (on ? 450 : 400) && missile->splashDamage == 400, "allied mortar shell radius");
+		G_PreFilledMissileEntity(missile, WP_MORTAR2_SET, WP_MORTAR2_SET, 0, TEAM_AXIS, 0, attacker, zero, zero);
+		Check(missile->splashRadius == (on ? 450 : 400) && missile->splashDamage == 400, "axis mortar shell radius");
+		G_PreFilledMissileEntity(missile, WP_SATCHEL, WP_SATCHEL, 0, TEAM_AXIS, 0, attacker, zero, zero);
+		Check(missile->splashRadius == (on ? 300 : 250) && missile->splashDamage == 250, "satchel radius");
+	}
+
+	// Real flame burn path down to G_Damage; the client pain path needs animation data the harness does not load
+	for (on = 0; on <= 1; on++)
+	{
+		BG_ETLabApplyWeaponTuning(on ? (1 << ETLAB_WT_FLAME_DAMAGE) : 0);
+		ResetScene();
+		Com_Memset(&client, 0, sizeof(client));
+		client.sess.sessionTeam = TEAM_AXIS;
+		attacker->client = &client;
+		attacker->inuse = qtrue;
+		Com_Memset(missile, 0, sizeof(*missile));
+		missile->inuse = qtrue;
+		missile->s.number = MAX_CLIENTS;
+		missile->takedamage = qtrue;
+		missile->health = 100;
+		missile->classname = "etlab_burn_target";
+		G_BurnMeGood(attacker, missile, NULL, qtrue);
+		Check(missile->health == 100 - (on ? 6 : 5) && missile->flameQuota == 5, "flame hit deals 6 instead of 5 damage, burn quota unchanged");
+		G_BurnMeGood(attacker, missile, NULL, qtrue);
+		Check(missile->health == 100 - (on ? 6 : 5), "burn rate limit per frame unchanged");
+		attacker->client = NULL;
+	}
+
+	// Map start reads the cvar and publishes the mask for cgame
+	Q_strncpyz(g_etlabWeaponTuning.string, "mg flamefuel", sizeof(g_etlabWeaponTuning.string));
+	G_ETLabWeaponTuningInit();
+	mask = (1 << ETLAB_WT_MG_HEAT) | (1 << ETLAB_WT_MG_SETUP) | (1 << ETLAB_WT_MG_BELT) | (1 << ETLAB_WT_FLAME_FUEL);
+	Check(etlabWeaponTuning == mask && Q_atoi(weaponTuningString) == mask && weaponTable[WP_FLAMETHROWER].maxAmmo == 300, "map start applies g_etlabWeaponTuning and publishes CS_ETLAB_WEAPONS");
+	Q_strncpyz(g_etlabWeaponTuning.string, "", sizeof(g_etlabWeaponTuning.string));
+	G_ETLabWeaponTuningInit();
+	Check(!etlabWeaponTuning && !Q_stricmp(weaponTuningString, "0") && !memcmp(weaponTable, originalWeapons, sizeof(originalWeapons)) && !memcmp(bg_playerClasses, originalClasses, sizeof(originalClasses)), "empty cvar restores the original rules at the next map start");
+}
+
 int main(void)
 {
 	int team, cls, i, xp;
@@ -860,6 +1032,7 @@ int main(void)
 	CheckQuickSpotting();
 	CheckGermanCatalog();
 	CheckAwards();
+	CheckWeaponTuning();
 	for (team = TEAM_AXIS; team <= TEAM_ALLIES; team++)
 	{
 		for (cls = PC_SOLDIER; cls < NUM_PLAYER_CLASSES; cls++)
@@ -876,6 +1049,6 @@ int main(void)
 			}
 		}
 	}
-	printf("PASS: %d production spawn/menu/pliers/mines/modifier/award checks, both teams, all classes and primary loadouts, XP 0/4.\n", checks);
+	printf("PASS: %d production spawn/menu/pliers/mines/modifier/award/weapon-tuning checks, both teams, all classes and primary loadouts, XP 0/4.\n", checks);
 	return 0;
 }

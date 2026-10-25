@@ -44,6 +44,28 @@ Zweck: Sollverhalten bei Änderungen und Tests erhalten. Regeln gelten für beid
 | Workshop Elf | Werkstatt-Elf | Fertiggestellte Konstruktionen (Endstufe) und vollständig reparierte MG 42 |
 | Secret Santa | Geheimwichtel | Von Teamkameraden aufgenommene Health- und Ammo-Packs |
 
+## Nischenwaffen
+
+- **Konfiguration:** `g_etlabWeaponTuning` nennt die aktiven Aufwertungen: `all`, Waffengruppen (`mortar`, `mg`, `satchel`, `flamer`) oder einzelne Namen aus der Tabelle, getrennt durch Leerzeichen, Komma oder Semikolon; unbekannte Namen werden ignoriert. Leer (Standard) entspricht dem bisherigen Verhalten. Wirksam ab dem nächsten Mapstart oder `map_restart`; die Server-Konsole listet die aktiven Aufwertungen.
+- **Client und Server:** Der Server sendet die Auswahl als Bitmaske im Konfigstring `CS_ETLAB_WEAPONS`. Server und Client setzen damit dieselben Tabellenwerte; Prediction, Ladebalken, Hitze- und Munitionsanzeige bleiben dadurch synchron.
+- **Invarianten:** Beide Teams erhalten dieselben Werte. Primärwaffen, Direkt- und Splash-Schaden von Mörser, MG und Satchel sowie MG-Streuung und Feuerrate bleiben unverändert. Abbauen von Mörser und MG dauert wie bisher. Ausschalten stellt die Originaltabellen bitgenau wieder her. `lowammo` halbiert auch eine aufgewertete Reserve.
+
+| Name | Waffe | Wirkung |
+|---|---|---|
+| `mortarcharge` | Mörser | Schuss kostet 1/3 statt 1/2 des Soldier-Ladebalkens, ab Heavy Weapons 1 1/4 statt 1/3 |
+| `mortarsetup` | Mörser | Aufstellen 1,0 statt 1,667 Sekunden |
+| `mortarammo` | Mörser | 20 statt 15 Granaten beim Spawn; Tragekapazität ebenfalls +5 |
+| `mortarradius` | Mörser | Explosionsradius 450 statt 400 |
+| `mgheat` | Mobiles MG 42/Browning | Überhitzung nach etwa 50 statt 30 Schuss Dauerfeuer (Hitzegrenze 2500 statt 1500) |
+| `mgsetup` | Mobiles MG 42/Browning | Aufstellen 0,8 statt 1,25 Sekunden |
+| `mgbelt` | Mobiles MG 42/Browning | Zweiter Gurt: 150 Schuss Reserve beim Spawn statt keiner |
+| `satchelcharge` | Satchel | Kostet 3/4 statt des vollen Covert-Ops-Ladebalkens, ab Covert Ops 2 1/2 statt 2/3 |
+| `satchelradius` | Satchel | Explosionsradius 300 statt 250 |
+| `satchelfuse` | Satchel | Zünder löst nach 400 statt 722 ms aus |
+| `flamefuel` | Flammenwerfer | 300 statt 200 Treibstoff, also 15 statt 10 Sekunden Dauerfeuer; ein Munitionspaket füllt den Tank |
+| `flamespeed` | Flammenwerfer | Tempofaktor 0,85 statt 0,7; gilt wie bisher beim Feuern und ohne Heavy Weapons 3 auch beim Tragen |
+| `flamedamage` | Flammenwerfer | 6 statt 5 Schaden je Treffer und Nachbrenn-Tick |
+
 ## Übungsfeld-Invarianten
 
 - `g_etlabPractice 1` ist opt-in. Zusätzlich müssen lokaler Host, Listenserver und Map `oasis` zutreffen. Auf Dedicated Servern keine Übungsobjekte erzeugen.

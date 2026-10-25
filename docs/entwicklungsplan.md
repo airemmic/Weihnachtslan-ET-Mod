@@ -15,15 +15,15 @@ Beauftragte Erweiterungen des Weihnachts-LAN-Mods, Stand 25.10.2026. Reihenfolge
 Stand 25.10.2026. Bei jeder Änderung an Status oder Branch-Lage diesen Abschnitt nachziehen.
 
 - **Ein Mod, ein Repository:** Alle Erweiterungen sind Teile desselben Mods `etlab` (ein `fs_game`, gemeinsame Module, ein `mod/etlab.patch`). Ein Server lädt nur einen Mod; getrennte Mods oder Repositories könnten nicht gemeinsam laufen. Jede Erweiterung bleibt per Cvar einzeln schaltbar.
-- **Branch-Lage:** Punkte 1 und 2 sind in `main` (PR #1, Merge `3aac44a`). `ccr-78a33ed0-k5azh0` ist darin vollständig enthalten und überholt. Neue Arbeit startet von `main`.
+- **Branch-Lage:** Punkte 1 und 2 sind in `main` (PR #1, Merge `3aac44a`). `ccr-78a33ed0-k5azh0` ist darin vollständig enthalten und überholt. Punkt 3 liegt auf `claude/zealous-gauss-mx7095` und ist noch nicht in `main`. Neue Arbeit startet von `main`, sobald Punkt 3 dort ist.
 - **Arbeitsweise:** Erweiterungen nacheinander entwickeln und zügig nach `main` übernehmen. Parallele Branches kollidieren in der einen Patch-Datei; Konflikte im Source-Checkout lösen und per `save` neu erzeugen, nie im Patch von Hand mischen.
-- **LAN-Betrieb:** Ohne Cvars verhält sich der Mod wie vor den Erweiterungen. Für die LAN mindestens `g_etlabModifierPool`, `g_etlabModifierMode` und `g_etlabAwards 1` am Server setzen; siehe `installation.md`.
+- **LAN-Betrieb:** Ohne Cvars verhält sich der Mod wie vor den Erweiterungen. Für die LAN mindestens `g_etlabModifierPool`, `g_etlabModifierMode`, `g_etlabAwards 1` und `g_etlabWeaponTuning` (etwa `all`) am Server setzen; siehe `installation.md`.
 
 | Punkt | Code und native Tests | Offen |
 |---|---|---|
 | 1. Rundenmodifikatoren | fertig | Runtime-Abnahme mit Original-PK3s, Werte nach Testrunde justieren |
 | 2. Rundenauszeichnungen | fertig, inklusive Deutsch/Englisch nach `cl_lang` | Runtime-Abnahme (Endpanel, Chat, Übersetzung, Zähler im echten Spiel); `Save-ModChanges.ps1` mit `etmain/locale/mod/`-Änderung einmal unter Windows ausführen |
-| 3. Nischenwaffen | nicht begonnen | Werte je Waffe festlegen |
+| 3. Nischenwaffen | fertig, 13 einzeln schaltbare Aufwertungen | Runtime-Abnahme mit Original-PK3s (Ladekosten, Aufstellen, Überhitzung, Zünder, Tempo, Schaden am Spieler), Werte nach Testrunde justieren; Merge nach `main` |
 | 4. Weihnachtsoptik | nicht begonnen | Asset-Pipeline, Umfang |
 
 ## 1. Rundenmodifikatoren
@@ -49,7 +49,9 @@ Stand 25.10.2026. Bei jeder Änderung an Status oder Branch-Lage diesen Abschnit
 
 - Ziel: Mörser, MG42, Satchel und Flammenwerfer attraktiver machen, ohne Primärwaffen zu entwerten.
 - Grenzen: Änderungen in `bg_pmove.c` betreffen Prediction; Client und Server gemeinsam bauen. Schadenswerte in `g_weapon.c`/`g_combat.c`, Waffentabellen in `bg_misc.c`.
-- Offen: konkrete Werte; Entscheidung je Waffe nach Testrunde.
+- Entschieden: Jede Aufwertung einzeln über `g_etlabWeaponTuning` wählbar (`all`, Waffengruppe oder Name), Standard leer. Mörser: Ladekosten, Aufstellen, Munition, Radius. MG: Überhitzung, Aufstellen, zweiter Gurt; geringere Streuung geduckt oder liegend verworfen. Satchel: Ladekosten, Radius, Zünder. Flammenwerfer: Treibstoff, Tempo, Schaden.
+- Umgesetzt: Gemeinsame Tabellenänderung in `bg_etlab.c`, Konfigstring `CS_ETLAB_WEAPONS` für Client-Prediction und HUD, native Tests. Sollverhalten und Werte in `spielregeln.md`.
+- Offen: Runtime-Abnahme auf Host mit Original-PK3s; Werte nach Testrunde feinjustieren.
 
 ## 4. Weihnachtsoptik
 

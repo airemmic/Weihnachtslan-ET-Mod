@@ -186,10 +186,10 @@ index c8c5b25..f78405c 100644
  
 diff --git a/src/cgame/cg_etlab.c b/src/cgame/cg_etlab.c
 new file mode 100644
-index 0000000..bf3d028
+index 0000000..0d7a552
 --- /dev/null
 +++ b/src/cgame/cg_etlab.c
-@@ -0,0 +1,122 @@
+@@ -0,0 +1,130 @@
 +/*
 + * Wolfenstein: Enemy Territory GPL Source Code
 + * Copyright (C) 1999-2010 id Software LLC, a ZeniMax Media company.
@@ -214,7 +214,7 @@ index 0000000..bf3d028
 + */
 +/**
 + * @file cg_etlab.c
-+ * @brief ETLab round modifiers on the client (configstring parsing and HUD note) and Christmas award chat lines.
++ * @brief ETLab round modifiers on the client (configstring parsing and HUD note), niche weapon tuning and Christmas award chat lines.
 + */
 +
 +#include "cg_local.h"
@@ -230,6 +230,14 @@ index 0000000..bf3d028
 +	}
 +	cgs.etlabModifier    = (index > ETLAB_MOD_NONE && index < ETLAB_MOD_COUNT) ? index : ETLAB_MOD_NONE;
 +	cgs.etlabModifierEnd = end;
++}
++
++/**
++ * @brief Apply the server's niche weapon tuning to the client copy of the shared tables (prediction, HUD).
++ */
++void CG_ETLabWeaponTuningChanged(void)
++{
++	BG_ETLabApplyWeaponTuning(Q_atoi(CG_ConfigString(CS_ETLAB_WEAPONS)));
 +}
 +
 +qboolean CG_ETLabModifierActive(int index)
@@ -344,7 +352,7 @@ index 55a8fda..facb692 100644
  				break;
  			}
 diff --git a/src/cgame/cg_local.h b/src/cgame/cg_local.h
-index c71728b..7961816 100644
+index c71728b..ee275b6 100644
 --- a/src/cgame/cg_local.h
 +++ b/src/cgame/cg_local.h
 @@ -2367,10 +2367,11 @@ typedef struct
@@ -381,13 +389,14 @@ index c71728b..7961816 100644
  } cgs_t;
  
  //==============================================================================
-@@ -3408,6 +3413,13 @@ void CG_ShaderStateChanged(void);
+@@ -3408,6 +3413,14 @@ void CG_ShaderStateChanged(void);
  void CG_ChargeTimesChanged(void);
  void CG_TeamRestrictionsChanged(void);
  void CG_SkillLevelsChanged(void);
 +
 +// cg_etlab.c
 +void CG_ETLabModifierChanged(void);
++void CG_ETLabWeaponTuningChanged(void);
 +qboolean CG_ETLabModifierActive(int index);
 +int CG_ETLabLimboTime(int base);
 +void CG_ETLabDrawModifier(void);
@@ -396,32 +405,36 @@ index c71728b..7961816 100644
  void CG_PlayBufferedVoiceChats(void);
  void CG_AddToTeamChat(const char *str, int clientnum);
 diff --git a/src/cgame/cg_main.c b/src/cgame/cg_main.c
-index 2212fef..a4de08c 100644
+index 2212fef..bb7fb16 100644
 --- a/src/cgame/cg_main.c
 +++ b/src/cgame/cg_main.c
-@@ -2267,6 +2267,7 @@ void CG_Init(int serverMessageNum, int serverCommandSequence, int clientNum, qbo
+@@ -2267,6 +2267,8 @@ void CG_Init(int serverMessageNum, int serverCommandSequence, int clientNum, qbo
  	CG_DemoBackwardsCompatInit();
  	CG_ParseWolfinfo();
  	CG_ParseServerToggles();
 +	CG_ETLabModifierChanged();
++	CG_ETLabWeaponTuningChanged();
  
  	CG_InitConsoleCommands();
  
 diff --git a/src/cgame/cg_servercmds.c b/src/cgame/cg_servercmds.c
-index b20afe0..cb61b32 100644
+index b20afe0..e1207b1 100644
 --- a/src/cgame/cg_servercmds.c
 +++ b/src/cgame/cg_servercmds.c
-@@ -1054,6 +1054,9 @@ static void CG_ConfigStringModified(void)
+@@ -1054,6 +1054,12 @@ static void CG_ConfigStringModified(void)
  	case CS_UPGRADERANGE:
  		CG_SkillLevelsChanged();
  		break;
 +	case CS_ETLAB_MODIFIER:
 +		CG_ETLabModifierChanged();
 +		break;
++	case CS_ETLAB_WEAPONS:
++		CG_ETLabWeaponTuningChanged();
++		break;
  	case CS_SKYBOXORG:
  		CG_ParseSkyBox();
  		break;
-@@ -3039,6 +3042,13 @@ static void CG_ServerCommand(void)
+@@ -3039,6 +3045,13 @@ static void CG_ServerCommand(void)
  		return;
  	}
  
@@ -605,10 +618,10 @@ index 9902fc3..84c00f9 100644
  		}
 diff --git a/src/game/bg_etlab.c b/src/game/bg_etlab.c
 new file mode 100644
-index 0000000..932382f
+index 0000000..87f18c1
 --- /dev/null
 +++ b/src/game/bg_etlab.c
-@@ -0,0 +1,146 @@
+@@ -0,0 +1,319 @@
 +/*
 + * Wolfenstein: Enemy Territory GPL Source Code
 + * Copyright (C) 1999-2010 id Software LLC, a ZeniMax Media company.
@@ -633,7 +646,7 @@ index 0000000..932382f
 + */
 +/**
 + * @file bg_etlab.c
-+ * @brief ETLab round modifiers and Christmas awards: shared tables and pool parsing for game and cgame.
++ * @brief ETLab round modifiers, Christmas awards and niche weapon tuning: shared tables and list parsing for game and cgame.
 + */
 +
 +#include "../qcommon/q_shared.h"
@@ -682,37 +695,43 @@ index 0000000..932382f
 +}
 +
 +/**
++ * @brief Next token of a list separated by spaces, tabs, commas or semicolons; qfalse at the end of the list.
++ */
++static qboolean BG_ETLabNextToken(const char **list, char *token, int size)
++{
++	const char *p     = *list;
++	int        length = 0;
++
++	while (*p == ' ' || *p == ',' || *p == ';' || *p == '\t')
++	{
++		p++;
++	}
++	while (*p && *p != ' ' && *p != ',' && *p != ';' && *p != '\t')
++	{
++		if (length < size - 1)
++		{
++			token[length++] = *p;
++		}
++		p++;
++	}
++	token[length] = '\0';
++	*list         = p;
++	return length > 0 ? qtrue : qfalse;
++}
++
++/**
 + * @brief Whether a modifier is part of a pool string ("all" or names separated by spaces/commas/semicolons).
 + */
 +qboolean BG_ETLabModifierInPool(const char *pool, int index)
 +{
 +	char token[64];
-+	int  length;
 +
 +	if (index <= ETLAB_MOD_NONE || index >= ETLAB_MOD_COUNT || !pool)
 +	{
 +		return qfalse;
 +	}
-+	while (*pool)
++	while (BG_ETLabNextToken(&pool, token, sizeof(token)))
 +	{
-+		while (*pool == ' ' || *pool == ',' || *pool == ';' || *pool == '\t')
-+		{
-+			pool++;
-+		}
-+		length = 0;
-+		while (*pool && *pool != ' ' && *pool != ',' && *pool != ';' && *pool != '\t')
-+		{
-+			if (length < (int)sizeof(token) - 1)
-+			{
-+				token[length++] = *pool;
-+			}
-+			pool++;
-+		}
-+		token[length] = '\0';
-+		if (!length)
-+		{
-+			continue;
-+		}
 +		if (!Q_stricmp(token, "all") || !Q_stricmp(token, etlabModifiers[index].name))
 +		{
 +			return qtrue;
@@ -755,11 +774,188 @@ index 0000000..932382f
 +	{ "Workshop Elf",           "most constructions and repairs"         },
 +	{ "Secret Santa",           "most packs handed to teammates"         },
 +};
++
++const etlabWeaponTuningInfo_t etlabWeaponTunings[ETLAB_WT_COUNT] =
++{
++	{ "mortarcharge",  "mortar"  },
++	{ "mortarsetup",   "mortar"  },
++	{ "mortarammo",    "mortar"  },
++	{ "mortarradius",  "mortar"  },
++	{ "mgheat",        "mg"      },
++	{ "mgsetup",       "mg"      },
++	{ "mgbelt",        "mg"      },
++	{ "satchelcharge", "satchel" },
++	{ "satchelradius", "satchel" },
++	{ "satchelfuse",   "satchel" },
++	{ "flamefuel",     "flamer"  },
++	{ "flamespeed",    "flamer"  },
++	{ "flamedamage",   "flamer"  },
++};
++
++int etlabWeaponTuning;
++
++/**
++ * @brief Tuning bitmask for a list of "all", weapon groups or tuning names; unknown names are ignored.
++ */
++int BG_ETLabWeaponTuningMask(const char *list)
++{
++	char token[64];
++	int  i, mask = 0;
++
++	if (!list)
++	{
++		return 0;
++	}
++	while (BG_ETLabNextToken(&list, token, sizeof(token)))
++	{
++		for (i = 0; i < ETLAB_WT_COUNT; i++)
++		{
++			if (!Q_stricmp(token, "all") || !Q_stricmp(token, etlabWeaponTunings[i].name) || !Q_stricmp(token, etlabWeaponTunings[i].group))
++			{
++				mask |= 1 << i;
++			}
++		}
++	}
++	return mask;
++}
++
++qboolean BG_ETLabWeaponTuningActive(int tuning)
++{
++	return (tuning >= 0 && tuning < ETLAB_WT_COUNT && (etlabWeaponTuning & (1 << tuning))) ? qtrue : qfalse;
++}
++
++static const weapon_t etlabTunedWeapons[] =
++{
++	WP_MORTAR,      WP_MORTAR_SET,      WP_MORTAR2,         WP_MORTAR2_SET,
++	WP_MOBILE_MG42, WP_MOBILE_MG42_SET, WP_MOBILE_BROWNING, WP_MOBILE_BROWNING_SET,
++	WP_SATCHEL,     WP_SATCHEL_DET,     WP_FLAMETHROWER
++};
++
++static weaponTable_t    etlabWeaponBackup[ARRAY_LEN(etlabTunedWeapons)];
++static bg_playerclass_t etlabClassBackup[2][NUM_PLAYER_CLASSES];
++static qboolean         etlabBackupTaken;
++
++/**
++ * @brief Spawn reserve of a primary weapon in every class offering it: original value plus extra.
++ * Only startingAmmo is touched; cgame stores icon handles in the same class table.
++ */
++static void BG_ETLabSetStartingAmmo(weapon_t weapon, int extra)
++{
++	int team, cls, i;
++
++	for (team = 0; team < 2; team++)
++	{
++		for (cls = 0; cls < NUM_PLAYER_CLASSES; cls++)
++		{
++			for (i = 0; i < MAX_WEAPS_PER_CLASS; i++)
++			{
++				if (bg_playerClasses[team][cls].classPrimaryWeapons[i].weapon == weapon)
++				{
++					bg_playerClasses[team][cls].classPrimaryWeapons[i].startingAmmo = etlabClassBackup[team][cls].classPrimaryWeapons[i].startingAmmo + extra;
++				}
++			}
++		}
++	}
++}
++
++/**
++ * @brief Set the weapon and class tables to the original values plus the tunings in mask.
++ * Game and cgame each call this with the same mask (CS_ETLAB_WEAPONS) so prediction stays in sync.
++ */
++void BG_ETLabApplyWeaponTuning(int mask)
++{
++	unsigned int i;
++
++	if (!etlabBackupTaken)
++	{
++		for (i = 0; i < ARRAY_LEN(etlabTunedWeapons); i++)
++		{
++			etlabWeaponBackup[i] = weaponTable[etlabTunedWeapons[i]];
++		}
++		Com_Memcpy(etlabClassBackup, bg_playerClasses, sizeof(etlabClassBackup));
++		etlabBackupTaken = qtrue;
++	}
++	for (i = 0; i < ARRAY_LEN(etlabTunedWeapons); i++)
++	{
++		weaponTable[etlabTunedWeapons[i]] = etlabWeaponBackup[i];
++	}
++	etlabWeaponTuning = mask & ((1 << ETLAB_WT_COUNT) - 1);
++
++	if (BG_ETLabWeaponTuningActive(ETLAB_WT_MORTAR_CHARGE))
++	{
++		weaponTable[WP_MORTAR_SET].chargeTimeCoeff[0]  = weaponTable[WP_MORTAR2_SET].chargeTimeCoeff[0] = .33f;
++		weaponTable[WP_MORTAR_SET].chargeTimeCoeff[1]  = weaponTable[WP_MORTAR2_SET].chargeTimeCoeff[1] = .25f;
++	}
++	if (BG_ETLabWeaponTuningActive(ETLAB_WT_MORTAR_SETUP))
++	{
++		weaponTable[WP_MORTAR].altSwitchTimeFrom = weaponTable[WP_MORTAR2].altSwitchTimeFrom = 1000;
++	}
++	if (BG_ETLabWeaponTuningActive(ETLAB_WT_MORTAR_AMMO))
++	{
++		weaponTable[WP_MORTAR].maxAmmo      += 5;
++		weaponTable[WP_MORTAR_SET].maxAmmo  += 5;
++		weaponTable[WP_MORTAR2].maxAmmo     += 5;
++		weaponTable[WP_MORTAR2_SET].maxAmmo += 5;
++	}
++	BG_ETLabSetStartingAmmo(WP_MORTAR, BG_ETLabWeaponTuningActive(ETLAB_WT_MORTAR_AMMO) ? 5 : 0);
++	BG_ETLabSetStartingAmmo(WP_MORTAR2, BG_ETLabWeaponTuningActive(ETLAB_WT_MORTAR_AMMO) ? 5 : 0);
++	if (BG_ETLabWeaponTuningActive(ETLAB_WT_MORTAR_RADIUS))
++	{
++		weaponTable[WP_MORTAR_SET].splashRadius = weaponTable[WP_MORTAR2_SET].splashRadius = 450;
++	}
++
++	if (BG_ETLabWeaponTuningActive(ETLAB_WT_MG_HEAT))
++	{
++		weaponTable[WP_MOBILE_MG42].maxHeat     = weaponTable[WP_MOBILE_MG42_SET].maxHeat = 2500;
++		weaponTable[WP_MOBILE_BROWNING].maxHeat = weaponTable[WP_MOBILE_BROWNING_SET].maxHeat = 2500;
++	}
++	if (BG_ETLabWeaponTuningActive(ETLAB_WT_MG_SETUP))
++	{
++		weaponTable[WP_MOBILE_MG42].altSwitchTimeFrom = weaponTable[WP_MOBILE_BROWNING].altSwitchTimeFrom = 800;
++	}
++	BG_ETLabSetStartingAmmo(WP_MOBILE_MG42, BG_ETLabWeaponTuningActive(ETLAB_WT_MG_BELT) ? weaponTable[WP_MOBILE_MG42].maxClip : 0);
++	BG_ETLabSetStartingAmmo(WP_MOBILE_BROWNING, BG_ETLabWeaponTuningActive(ETLAB_WT_MG_BELT) ? weaponTable[WP_MOBILE_BROWNING].maxClip : 0);
++
++	if (BG_ETLabWeaponTuningActive(ETLAB_WT_SATCHEL_CHARGE))
++	{
++		weaponTable[WP_SATCHEL].chargeTimeCoeff[0] = .75f;
++		weaponTable[WP_SATCHEL].chargeTimeCoeff[1] = .5f;
++	}
++	if (BG_ETLabWeaponTuningActive(ETLAB_WT_SATCHEL_RADIUS))
++	{
++		weaponTable[WP_SATCHEL].splashRadius = 300;
++	}
++	if (BG_ETLabWeaponTuningActive(ETLAB_WT_SATCHEL_FUSE))
++	{
++		weaponTable[WP_SATCHEL_DET].fireDelayTime = 400;
++	}
++
++	if (BG_ETLabWeaponTuningActive(ETLAB_WT_FLAME_FUEL))
++	{
++		weaponTable[WP_FLAMETHROWER].maxAmmo = weaponTable[WP_FLAMETHROWER].maxClip = 300;
++	}
++	BG_ETLabSetStartingAmmo(WP_FLAMETHROWER, BG_ETLabWeaponTuningActive(ETLAB_WT_FLAME_FUEL) ? 100 : 0);
++	if (BG_ETLabWeaponTuningActive(ETLAB_WT_FLAME_DAMAGE))
++	{
++		weaponTable[WP_FLAMETHROWER].damage = 6;
++	}
++	// ETLAB_WT_FLAME_SPEED is read directly in PM_CmdScale
++}
 diff --git a/src/game/bg_pmove.c b/src/game/bg_pmove.c
-index d4164bc..cda79ca 100644
+index d4164bc..c3a0fac 100644
 --- a/src/game/bg_pmove.c
 +++ b/src/game/bg_pmove.c
-@@ -4087,6 +4087,13 @@ static void PM_Weapon(void)
+@@ -681,7 +681,8 @@ static float PM_CmdScale(usercmd_t *cmd)
+ 		{
+ 			if (!(BG_IsSkillAvailable(pm->skill, SK_HEAVY_WEAPONS, SK_SOLDIER_DEXTERITY)) || (pm->cmd.buttons & BUTTON_ATTACK))
+ 			{
+-				scale *= 0.7f;
++				// ETLab niche weapon tuning: lighter flamethrower penalty
++				scale *= BG_ETLabWeaponTuningActive(ETLAB_WT_FLAME_SPEED) ? 0.85f : 0.7f;
+ 			}
+ 		}
+ 		else
+@@ -4087,6 +4088,13 @@ static void PM_Weapon(void)
  	// handle the charge time
  	pm->ps->classWeaponTime = weaponChargeTime;
  
@@ -774,18 +970,19 @@ index d4164bc..cda79ca 100644
  
  #ifdef CGAMEDLL
 diff --git a/src/game/bg_public.h b/src/game/bg_public.h
-index ebdba6d..a2e0c24 100644
+index ebdba6d..c5922d6 100644
 --- a/src/game/bg_public.h
 +++ b/src/game/bg_public.h
-@@ -420,6 +420,7 @@ extern const int aReinfSeeds[MAX_REINFSEEDS];
+@@ -420,6 +420,8 @@ extern const int aReinfSeeds[MAX_REINFSEEDS];
  
  #define CS_TEAMRESTRICTIONS             43     ///< Class restrictions have been changed
  #define CS_UPGRADERANGE                 44     ///< Upgrade range levels have been changed
 +#define CS_ETLAB_MODIFIER               45     ///< ETLab round modifier: "index endTime"
++#define CS_ETLAB_WEAPONS                46     ///< ETLab niche weapon tuning: bitmask of etlabWeaponTuning_t
  
  #define CS_MODELS                       64
  #define CS_SOUNDS                       (CS_MODELS +               MAX_MODELS)              ///< 320 (256)
-@@ -2659,6 +2660,77 @@ bg_playerclass_t *BG_GetPlayerClassInfo(int team, int cls);
+@@ -2659,6 +2661,109 @@ bg_playerclass_t *BG_GetPlayerClassInfo(int team, int cls);
  bg_playerclass_t *BG_PlayerClassForPlayerState(playerState_t *ps);
  qboolean BG_ClassHasWeapon(bg_playerclass_t *classInfo, weapon_t weap);
  qboolean BG_WeaponIsPrimaryForClassAndTeam(int classnum, team_t team, weapon_t weapon);
@@ -860,6 +1057,38 @@ index ebdba6d..a2e0c24 100644
 +} etlabAwardInfo_t;
 +
 +extern const etlabAwardInfo_t etlabAwards[ETLAB_AWARD_COUNT];
++
++// ETLab niche weapon tuning (bg_etlab.c): weapon and class table changes shared by game and cgame.
++// The server sends the active bitmask in CS_ETLAB_WEAPONS so prediction and HUD use the same values.
++typedef enum
++{
++	ETLAB_WT_MORTAR_CHARGE = 0, ///< shot costs 1/3 instead of 1/2 of the soldier charge bar (1/4 instead of 1/3 from Heavy Weapons 1)
++	ETLAB_WT_MORTAR_SETUP,      ///< deploying takes 1.0 instead of 1.667 seconds
++	ETLAB_WT_MORTAR_AMMO,       ///< 20 instead of 15 shells at spawn, carrying capacity raised accordingly
++	ETLAB_WT_MORTAR_RADIUS,     ///< splash radius 450 instead of 400
++	ETLAB_WT_MG_HEAT,           ///< mobile MG 42 / Browning overheat after about 50 instead of 30 rounds
++	ETLAB_WT_MG_SETUP,          ///< deploying takes 0.8 instead of 1.25 seconds
++	ETLAB_WT_MG_BELT,           ///< second belt: 150 reserve rounds at spawn instead of none
++	ETLAB_WT_SATCHEL_CHARGE,    ///< satchel costs 3/4 instead of the full covert ops bar (1/2 instead of 2/3 from Covert Ops 2)
++	ETLAB_WT_SATCHEL_RADIUS,    ///< splash radius 300 instead of 250
++	ETLAB_WT_SATCHEL_FUSE,      ///< detonator fires after 400 instead of 722 ms
++	ETLAB_WT_FLAME_FUEL,        ///< 300 instead of 200 fuel
++	ETLAB_WT_FLAME_SPEED,       ///< movement factor 0.85 instead of 0.7 while the flamethrower slows the player
++	ETLAB_WT_FLAME_DAMAGE,      ///< 6 instead of 5 damage per flame hit and afterburn tick
++	ETLAB_WT_COUNT
++} etlabWeaponTuning_t;
++
++typedef struct
++{
++	const char *name;
++	const char *group; ///< mortar, mg, satchel or flamer: selects every tuning of that weapon
++} etlabWeaponTuningInfo_t;
++
++extern const etlabWeaponTuningInfo_t etlabWeaponTunings[ETLAB_WT_COUNT];
++extern int etlabWeaponTuning; ///< active bitmask, set by BG_ETLabApplyWeaponTuning
++int BG_ETLabWeaponTuningMask(const char *list);
++void BG_ETLabApplyWeaponTuning(int mask);
++qboolean BG_ETLabWeaponTuningActive(int tuning);
  weapon_t BG_GetBestSecondaryWeapon(int classNum, team_t team, weapon_t primaryWeapon, int *skills);
  int BG_ClassWeaponCount(bg_playerclass_t *classInfo, team_t team);
  const char *BG_ShortClassnameForNumber(int classNum);
@@ -1130,10 +1359,10 @@ index 576d8fa..1a725c8 100644
  		VectorAdd(targ->client->ps.velocity, kvel, targ->client->ps.velocity);
  
 diff --git a/src/game/g_cvars.c b/src/game/g_cvars.c
-index eb66d25..35cfe76 100644
+index eb66d25..c595344 100644
 --- a/src/game/g_cvars.c
 +++ b/src/game/g_cvars.c
-@@ -269,6 +269,13 @@ vmCvar_t team_maxMachineguns;
+@@ -269,6 +269,15 @@ vmCvar_t team_maxMachineguns;
  vmCvar_t team_maxRockets;
  vmCvar_t team_maxRiflegrenades;
  vmCvar_t team_maxLandmines;
@@ -1144,10 +1373,12 @@ index eb66d25..35cfe76 100644
 +vmCvar_t g_etlabModifierMinutes;
 +vmCvar_t etlab_modifier;
 +vmCvar_t g_etlabAwards;
++// ETLab niche weapon tuning
++vmCvar_t g_etlabWeaponTuning;
  // misc
  vmCvar_t team_riflegrenades;
  // skills
-@@ -616,6 +623,14 @@ cvarTable_t gameCvarTable[] =
+@@ -616,6 +625,16 @@ cvarTable_t gameCvarTable[] =
  	{ &team_maxRockets,                   "team_maxRockets",                   "-1",                         0,                                               0, qfalse, qfalse },
  	{ &team_maxRiflegrenades,             "team_maxRiflegrenades",             "-1",                         0,                                               0, qfalse, qfalse },
  	{ &team_maxLandmines,                 "team_maxLandmines",                 "10",                         0,                                               0, qfalse, qfalse },
@@ -1159,14 +1390,16 @@ index eb66d25..35cfe76 100644
 +	{ &etlab_modifier,                    "etlab_modifier",                    "",                           0,                                               0, qfalse, qfalse },
 +	// ETLab Christmas awards
 +	{ &g_etlabAwards,                     "g_etlabAwards",                     "0",                          0,                                               0, qfalse, qfalse },
++	// ETLab niche weapon tuning
++	{ &g_etlabWeaponTuning,               "g_etlabWeaponTuning",               "",                           0,                                               0, qfalse, qfalse },
  	//misc
  	{ &team_riflegrenades,                "team_riflegrenades",                "1",                          0,                                               0, qfalse, qfalse },
  	//skills
 diff --git a/src/game/g_cvars.h b/src/game/g_cvars.h
-index a4b0bee..2fe7988 100644
+index a4b0bee..9ae3caa 100644
 --- a/src/game/g_cvars.h
 +++ b/src/game/g_cvars.h
-@@ -258,6 +258,14 @@ extern vmCvar_t team_maxMachineguns;
+@@ -258,6 +258,16 @@ extern vmCvar_t team_maxMachineguns;
  extern vmCvar_t team_maxRockets;
  extern vmCvar_t team_maxRiflegrenades;
  extern vmCvar_t team_maxLandmines;
@@ -1178,15 +1411,17 @@ index a4b0bee..2fe7988 100644
 +extern vmCvar_t etlab_modifier;
 +// ETLab Christmas awards
 +extern vmCvar_t g_etlabAwards;
++// ETLab niche weapon tuning
++extern vmCvar_t g_etlabWeaponTuning;
  // misc
  extern vmCvar_t team_riflegrenades;
  // skills
 diff --git a/src/game/g_etlab.c b/src/game/g_etlab.c
 new file mode 100644
-index 0000000..8a7fb14
+index 0000000..a1797a2
 --- /dev/null
 +++ b/src/game/g_etlab.c
-@@ -0,0 +1,594 @@
+@@ -0,0 +1,620 @@
 +/*
 + * Wolfenstein: Enemy Territory GPL Source Code
 + * Copyright (C) 1999-2010 id Software LLC, a ZeniMax Media company.
@@ -1211,12 +1446,13 @@ index 0000000..8a7fb14
 + */
 +/**
 + * @file g_etlab.c
-+ * @brief ETLab round modifiers (selection, lifetime and server-side rule hooks) and Christmas awards.
++ * @brief ETLab round modifiers (selection, lifetime and server-side rule hooks), Christmas awards and niche weapon tuning.
 + *
 + * g_etlabModifierPool lists the modifiers that may be chosen ("all" or names).
 + * g_etlabModifierMode: 0 off, 1 random per map, 2 vote only, 3 random with vote override.
 + * Short-lived ("gaudi") modifiers end g_etlabModifierMinutes after the match starts.
 + * g_etlabAwards 1 adds the Christmas awards to the debriefing and announces them in chat.
++ * g_etlabWeaponTuning lists the niche weapon tunings ("all", weapon groups or tuning names), read at every map start.
 + */
 +
 +#include "g_local.h"
@@ -1781,6 +2017,31 @@ index 0000000..8a7fb14
 +		trap_SendServerCommand(-1, va("etlabaward %i %i %i \"%s\"", award, bestClientNum, bestValue, best->pers.netname));
 +	}
 +}
++
++/**
++ * @brief Map start and map_restart: apply g_etlabWeaponTuning to the shared tables and publish it for cgame.
++ */
++void G_ETLabWeaponTuningInit(void)
++{
++	int mask = BG_ETLabWeaponTuningMask(g_etlabWeaponTuning.string);
++	int i;
++
++	BG_ETLabApplyWeaponTuning(mask);
++	trap_SetConfigstring(CS_ETLAB_WEAPONS, va("%i", etlabWeaponTuning));
++	if (!etlabWeaponTuning)
++	{
++		return;
++	}
++	G_Printf("ETLab weapon tuning:");
++	for (i = 0; i < ETLAB_WT_COUNT; i++)
++	{
++		if (BG_ETLabWeaponTuningActive(i))
++		{
++			G_Printf(" %s", etlabWeaponTunings[i].name);
++		}
++	}
++	G_Printf("\n");
++}
 diff --git a/src/game/g_items.c b/src/game/g_items.c
 index 117fe9d..3773085 100644
 --- a/src/game/g_items.c
@@ -1802,7 +2063,7 @@ index 117fe9d..3773085 100644
  	}
  
 diff --git a/src/game/g_local.h b/src/game/g_local.h
-index 83781ff..a01f95a 100644
+index 83781ff..f96d67c 100644
 --- a/src/game/g_local.h
 +++ b/src/game/g_local.h
 @@ -622,6 +622,19 @@ typedef struct
@@ -1854,7 +2115,7 @@ index 83781ff..a01f95a 100644
  } level_locals_t;
  
  /**
-@@ -1718,6 +1739,32 @@ void aagun_stopusing(gentity_t *self);
+@@ -1718,6 +1739,35 @@ void aagun_stopusing(gentity_t *self);
  float AngleDifference(float ang1, float ang2);
  qboolean G_FlingClient(gentity_t *vic, int flingType);
  
@@ -1884,11 +2145,14 @@ index 83781ff..a01f95a 100644
 +void G_ETLabBuildAwards(char *buffer, int size);
 +void G_RevealLandmine(gentity_t *mine);
 +
++// g_etlab.c: niche weapon tuning
++void G_ETLabWeaponTuningInit(void);
++
  void G_PreFilledMissileEntity(gentity_t *ent, int weaponNum, int realWeapon, int ownerNum, team_t teamNum, int clientNum, gentity_t *parent, const vec3_t start, const vec3_t dir);
  
  int G_GetEnemyPosition(gentity_t *ent, gentity_t *targ);
 diff --git a/src/game/g_main.c b/src/game/g_main.c
-index d4334cf..2d4e04c 100644
+index d4334cf..1ab87b5 100644
 --- a/src/game/g_main.c
 +++ b/src/game/g_main.c
 @@ -530,7 +530,7 @@ void G_CheckForCursorHints(gentity_t *ent)
@@ -1909,17 +2173,19 @@ index d4334cf..2d4e04c 100644
  				{
  					hintDist = CH_BREAKABLE_DIST;
  					if (checkEnt->methodOfDeath == MOD_DYNAMITE && G_LegacyRevive_IsFirstReviveRestricted(ent))
-@@ -1519,6 +1519,9 @@ void G_InitGame(int levelTime, int randomSeed, int restart, int etLegacyServer,
+@@ -1519,6 +1519,11 @@ void G_InitGame(int levelTime, int randomSeed, int restart, int etLegacyServer,
  	trap_SetConfigstring(CS_CHARGETIMES, cs);
  	trap_SetConfigstring(CS_FILTERCAMS, va("%i", g_filtercams.integer));
  
 +	// ETLab: round modifier for this map (kept across map_restart)
 +	G_ETLabModifierInit(restart ? qtrue : qfalse);
++	// ETLab: niche weapon tuning, shared with cgame through CS_ETLAB_WEAPONS
++	G_ETLabWeaponTuningInit();
 +
  	cs[0] = '\0';
  	Info_SetValueForKey(cs, "c0", team_maxSoldiers.string);
  	Info_SetValueForKey(cs, "c1", team_maxMedics.string);
-@@ -4686,6 +4689,9 @@ void G_RunFrame(int levelTime)
+@@ -4686,6 +4691,9 @@ void G_RunFrame(int levelTime)
  
  	CheckWolfMP();
  
@@ -1929,7 +2195,7 @@ index d4334cf..2d4e04c 100644
  	// see if it is time to end the level
  	CheckExitRules();
  
-@@ -4702,8 +4708,8 @@ void G_RunFrame(int levelTime)
+@@ -4702,8 +4710,8 @@ void G_RunFrame(int levelTime)
  
  	if (level.gameManager)
  	{
