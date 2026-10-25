@@ -464,18 +464,28 @@ static void CheckModifiers(void)
 		Check(COM_BitCheck(client.ps.weapons, smg), "Low Ammo keeps the loadout itself");
 	}
 
-	// Class Rotation switches a repeated class to the next one and tracks the spawn class
+	// Class Rotation switches a repeated class to the next one the team limits allow and tracks the spawn class
 	Com_Memset(&client, 0, sizeof(client));
+	player->client = &client;
+	team_maxSoldiers.integer = team_maxMedics.integer = team_maxEngineers.integer = team_maxFieldops.integer = team_maxCovertops.integer = -1;
 	client.sess.sessionTeam = TEAM_ALLIES;
 	client.sess.playerType = client.sess.latchPlayerType = PC_SOLDIER;
 	level.etlabModifier = ETLAB_MOD_NONE;
-	Check(!G_ETLabRotateClass(&client) && client.pers.etlabLastSpawnClass == PC_SOLDIER + 1, "no rotation without the modifier, spawn class remembered");
+	Check(!G_ETLabRotateClass(player) && client.pers.etlabLastSpawnClass == PC_SOLDIER + 1, "no rotation without the modifier, spawn class remembered");
 	level.etlabModifier = ETLAB_MOD_CLASSROTATION;
-	Check(G_ETLabRotateClass(&client) && client.sess.playerType == PC_MEDIC && client.sess.latchPlayerType == PC_MEDIC, "repeated class rotates to the next class");
+	Check(G_ETLabRotateClass(player) && client.sess.playerType == PC_MEDIC && client.sess.latchPlayerType == PC_MEDIC, "repeated class rotates to the next class");
 	Check(client.sess.playerWeapon == BG_GetPlayerClassInfo(TEAM_ALLIES, PC_MEDIC)->classPrimaryWeapons[0].weapon && client.sess.latchPlayerWeapon == client.sess.playerWeapon, "rotation assigns the class default primary");
 	client.sess.playerType = client.sess.latchPlayerType = PC_COVERTOPS;
-	Check(!G_ETLabRotateClass(&client) && client.sess.playerType == PC_COVERTOPS, "a freely chosen new class is kept");
-	Check(G_ETLabRotateClass(&client) && client.sess.playerType == PC_SOLDIER, "rotation wraps around after Covert Ops");
+	Check(!G_ETLabRotateClass(player) && client.sess.playerType == PC_COVERTOPS, "a freely chosen new class is kept");
+	Check(G_ETLabRotateClass(player) && client.sess.playerType == PC_SOLDIER, "rotation wraps around after Covert Ops");
+	Q_strncpyz(team_maxMedics.string, "0", sizeof(team_maxMedics.string));
+	team_maxMedics.integer = 0;
+	Check(G_ETLabRotateClass(player) && client.sess.playerType == PC_ENGINEER, "rotation skips a class closed by the team limit");
+	team_maxSoldiers.integer = team_maxFieldops.integer = team_maxCovertops.integer = 0;
+	Check(!G_ETLabRotateClass(player) && client.sess.playerType == PC_ENGINEER, "rotation keeps the class when every other class is full");
+	team_maxSoldiers.integer = team_maxMedics.integer = team_maxEngineers.integer = team_maxFieldops.integer = team_maxCovertops.integer = 0;
+	team_maxMedics.string[0] = '\0';
+	player->client = NULL;
 
 	// Vampire heals the enemy killer up to max health only
 	ResetScene();

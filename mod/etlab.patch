@@ -911,7 +911,7 @@ index a81601a..e1f347b 100644
  			reinforce(ent);
  			return;
 diff --git a/src/game/g_client.c b/src/game/g_client.c
-index 084617b..535bc5d 100644
+index 084617b..e60bbcb 100644
 --- a/src/game/g_client.c
 +++ b/src/game/g_client.c
 @@ -1317,6 +1317,10 @@ void SetWolfSpawnWeapons(gclient_t *client)
@@ -984,7 +984,7 @@ index 084617b..535bc5d 100644
  		client->sess.playerType = client->sess.latchPlayerType;
  
 +		// ETLab Class Rotation may switch to the next class
-+		if (G_ETLabRotateClass(client))
++		if (G_ETLabRotateClass(ent))
 +		{
 +			update = qtrue;
 +		}
@@ -1183,10 +1183,10 @@ index a4b0bee..2fe7988 100644
  // skills
 diff --git a/src/game/g_etlab.c b/src/game/g_etlab.c
 new file mode 100644
-index 0000000..0ddeec2
+index 0000000..8a7fb14
 --- /dev/null
 +++ b/src/game/g_etlab.c
-@@ -0,0 +1,578 @@
+@@ -0,0 +1,594 @@
 +/*
 + * Wolfenstein: Enemy Territory GPL Source Code
 + * Copyright (C) 1999-2010 id Software LLC, a ZeniMax Media company.
@@ -1229,6 +1229,8 @@ index 0000000..0ddeec2
 +// g_vote.c helpers without a public prototype
 +qboolean G_voteDescription(gentity_t *ent, qboolean fRefereeCmd, unsigned int cmd);
 +void G_voteCurrentSetting(gentity_t *ent, const char *cmd, const char *setting);
++// g_cmds.c helper without a public prototype
++qboolean G_IsClassFull(gentity_t *ent, int playerType, team_t team);
 +
 +static const char *G_ETLabModifierName(int index)
 +{
@@ -1539,12 +1541,14 @@ index 0000000..0ddeec2
 +}
 +
 +/**
-+ * @brief Class Rotation: a respawn with the previous class switches to the next class.
++ * @brief Class Rotation: a respawn with the previous class switches to the next class the team limits allow.
++ * The class is kept when every other class is full.
 + * @return qtrue when the session loadout was changed and userinfo needs an update.
 + */
-+qboolean G_ETLabRotateClass(gclient_t *client)
++qboolean G_ETLabRotateClass(gentity_t *ent)
 +{
-+	qboolean changed = qfalse;
++	gclient_t *client = ent->client;
++	qboolean  changed = qfalse;
 +
 +	if (client->sess.sessionTeam != TEAM_AXIS && client->sess.sessionTeam != TEAM_ALLIES)
 +	{
@@ -1554,14 +1558,26 @@ index 0000000..0ddeec2
 +	    client->sess.playerType == client->pers.etlabLastSpawnClass - 1)
 +	{
 +		bg_playerclass_t *classInfo;
-+		int              next = (client->sess.playerType + 1) % NUM_PLAYER_CLASSES;
++		int              next = client->sess.playerType, i;
 +
-+		client->sess.playerType = client->sess.latchPlayerType = next;
-+		classInfo               = BG_GetPlayerClassInfo(client->sess.sessionTeam, next);
-+		client->sess.playerWeapon = client->sess.latchPlayerWeapon = classInfo->classPrimaryWeapons[0].weapon;
-+		client->sess.playerWeapon2 = client->sess.latchPlayerWeapon2 = classInfo->classSecondaryWeapons[0].weapon;
-+		trap_SendServerCommand(client->ps.clientNum, va("cp \"^3Class Rotation: ^7you spawn as ^5%s^7 this time.\" 1", BG_ClassnameForNumber(next)));
-+		changed = qtrue;
++		for (i = 1; i < NUM_PLAYER_CLASSES; i++)
++		{
++			next = (client->sess.playerType + i) % NUM_PLAYER_CLASSES;
++			if (!G_IsClassFull(ent, next, client->sess.sessionTeam))
++			{
++				break;
++			}
++		}
++
++		if (i < NUM_PLAYER_CLASSES)
++		{
++			client->sess.playerType = client->sess.latchPlayerType = next;
++			classInfo               = BG_GetPlayerClassInfo(client->sess.sessionTeam, next);
++			client->sess.playerWeapon = client->sess.latchPlayerWeapon = classInfo->classPrimaryWeapons[0].weapon;
++			client->sess.playerWeapon2 = client->sess.latchPlayerWeapon2 = classInfo->classSecondaryWeapons[0].weapon;
++			trap_SendServerCommand(client->ps.clientNum, va("cp \"^3Class Rotation: ^7you spawn as ^5%s^7 this time.\" 1", BG_ClassnameForNumber(next)));
++			changed = qtrue;
++		}
 +	}
 +	client->pers.etlabLastSpawnClass = client->sess.playerType + 1;
 +	return changed;
@@ -1786,7 +1802,7 @@ index 117fe9d..3773085 100644
  	}
  
 diff --git a/src/game/g_local.h b/src/game/g_local.h
-index 83781ff..c6bd3b9 100644
+index 83781ff..a01f95a 100644
 --- a/src/game/g_local.h
 +++ b/src/game/g_local.h
 @@ -622,6 +622,19 @@ typedef struct
@@ -1857,7 +1873,7 @@ index 83781ff..c6bd3b9 100644
 +int G_ETLabTeamMaxLandmines(void);
 +qboolean G_ETLabRespawnBlocked(void);
 +void G_ETLabModifierSpawnWeapons(gclient_t *client);
-+qboolean G_ETLabRotateClass(gclient_t *client);
++qboolean G_ETLabRotateClass(gentity_t *ent);
 +void G_ETLabModifierOnKill(gentity_t *victim, gentity_t *attacker);
 +int G_ETLabModifier_v(gentity_t *ent, unsigned int dwVoteIndex, char *arg, char *arg2, qboolean fRefereeCmd);
 +
